@@ -16,14 +16,15 @@ export function useInongSession() {
 
     async function load() {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (!user) {
+      if (!session?.user) {
         router.replace("/login");
         return;
       }
       if (!active) return;
+      const user = session.user;
       setUserId(user.id);
 
       const { data: link } = await supabase
