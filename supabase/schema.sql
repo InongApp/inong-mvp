@@ -150,3 +150,27 @@ create policy "link_scores: participants read" on link_scores
         and (l.user_a = auth.uid() or l.user_b = auth.uid())
     )
   );
+
+-- =========================================================
+-- Invite preview — lets a visitor who isn't signed in yet (or isn't
+-- paired yet) see WHO invited them before deciding to sign up. Runs with
+-- definer privileges so it can bypass RLS, but only ever exposes the
+-- inviter's display name and whether the code is still claimable —
+-- nothing else from profiles or inong_links leaks through this.
+-- =========================================================
+create or replace function get_invite_preview(p_code text)
+returns table (valid boolean, inviter_name text)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    (l.status = 'pending' and l.user_b is null) as valid,
+    p.display_name as inviter_name
+  from inong_links l
+  join profiles p on p.id = l.user_a
+  where l.invite_code = upper(p_code)
+  limit 1;
+$$;
+
+grant execute on function get_invite_preview(text) to anon, authenticated;
