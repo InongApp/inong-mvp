@@ -13,7 +13,9 @@ export default function ExperienceNav() {
   if (
     pathname === "/" ||
     pathname.startsWith("/pair") ||
-    pathname.startsWith("/login")
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/join") ||
+    pathname.startsWith("/reset-password")
   )
     return null;
 

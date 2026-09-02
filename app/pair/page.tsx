@@ -14,6 +14,7 @@ export default function PairPage() {
   const [mode, setMode] = useState<"choose" | "create" | "join">("choose");
   const [joinCode, setJoinCode] = useState("");
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
@@ -106,17 +107,37 @@ export default function PairPage() {
   }
 
   if (inviteCode) {
+    const inviteLink =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/join/${inviteCode}`
+        : "";
+
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <p className="text-sm uppercase tracking-wide text-mute">
-          Share this with your Inong
+          Share this link with your Inong
         </p>
-        <p className="font-serif mt-4 text-5xl font-semibold tracking-widest text-coral">
-          {inviteCode}
+
+        <div className="mt-4 w-full break-all rounded-card bg-surface px-4 py-4 text-sm text-paper">
+          {inviteLink}
+        </div>
+
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(inviteLink);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="mt-3 rounded-full border border-mute px-5 py-2 text-sm text-paper transition hover:border-paper"
+        >
+          {copied ? "Copied!" : "Copy link"}
+        </button>
+
+        <p className="mt-6 max-w-xs text-mute">
+          Or if they&rsquo;d rather type it in, the code is{" "}
+          <span className="font-serif text-coral">{inviteCode}</span>
         </p>
-        <p className="mt-4 max-w-xs text-mute">
-          Once they join with this code, you&rsquo;ll both be ready to play.
-        </p>
+
         <button
           onClick={() => router.push("/know-me")}
           className="mt-10 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"

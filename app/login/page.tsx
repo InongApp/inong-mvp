@@ -10,8 +10,10 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   async function afterAuth(userId: string) {
     // Make sure a profiles row exists for this user
@@ -28,7 +30,17 @@ export default function LoginPage() {
       });
     }
 
-    // Route based on whether they already have an active pairing
+    // If they arrived here via an invite link, send them straight back to it
+    const pendingInvite =
+      typeof window !== "undefined"
+        ? localStorage.getItem("inong_pending_invite")
+        : null;
+    if (pendingInvite) {
+      router.push(`/join/${pendingInvite}`);
+      return;
+    }
+
+    // Otherwise route based on whether they already have an active pairing
     const { data: link } = await supabase
       .from("inong_links")
       .select("id")
@@ -44,6 +56,7 @@ export default function LoginPage() {
     if (!email.trim() || !password) return setError("Enter an email and password.");
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
       const { data, error: signUpErr } = await supabase.auth.signUp({
         email: email.trim(),
@@ -53,7 +66,7 @@ export default function LoginPage() {
       if (signUpErr) throw signUpErr;
 
       if (!data.session) {
-        setError(
+        setInfo(
           "Check your email to confirm your account, then sign in. (For fast testing, disable 'Confirm email' in Supabase Auth settings.)"
         );
         return;
@@ -71,6 +84,7 @@ export default function LoginPage() {
     if (!email.trim() || !password) return setError("Enter your email and password.");
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
       const { data, error: signInErr } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -78,6 +92,27 @@ export default function LoginPage() {
       });
       if (signInErr) throw signInErr;
       await afterAuth(data.user.id);
+    } catch (e: any) {
+      setError(e.message ?? "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      return setError("Enter your email above, then tap 'Forgot password?' again.");
+    }
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        { redirectTo: `${window.location.origin}/reset-password` }
+      );
+      if (resetErr) throw resetErr;
+      setInfo("Password reset link sent — check your email.");
     } catch (e: any) {
       setError(e.message ?? "Something went wrong.");
     } finally {
@@ -113,13 +148,32 @@ export default function LoginPage() {
       />
 
       <label className="mt-6 text-sm text-mute">Password</label>
-      <input
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="At least 6 characters"
-        className="mt-2 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
-      />
+      <div className="mt-2 flex items-center rounded-card bg-surface px-4 focus-within:ring-2 focus-within:ring-coral">
+        <input
+          type={showPassword ? "text" : "password"}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="At least 6 characters"
+          className="flex-1 bg-transparent py-3 text-paper placeholder:text-mute focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setShowPassword((s) => !s)}
+          className="pl-3 text-xs text-mute hover:text-paper"
+        >
+          {showPassword ? "Hide" : "Show"}
+        </button>
+      </div>
+
+      {mode === "signin" && (
+        <button
+          type="button"
+          onClick={handleForgotPassword}
+          className="mt-3 text-left text-sm text-mute hover:text-paper"
+        >
+          Forgot password?
+        </button>
+      )}
 
       <button
         onClick={mode === "signup" ? handleSignUp : handleSignIn}
@@ -133,6 +187,7 @@ export default function LoginPage() {
         onClick={() => {
           setMode(mode === "signup" ? "signin" : "signup");
           setError(null);
+          setInfo(null);
         }}
         className="mt-4 text-center text-sm text-mute hover:text-paper"
       >
@@ -142,6 +197,7 @@ export default function LoginPage() {
       </button>
 
       {error && <p className="mt-4 text-sm text-coral">{error}</p>}
+      {info && <p className="mt-4 text-sm text-skyblue">{info}</p>}
     </div>
   );
 }
