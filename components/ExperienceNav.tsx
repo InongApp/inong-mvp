@@ -10,7 +10,12 @@ const TABS = [
 
 export default function ExperienceNav() {
   const pathname = usePathname();
-  if (pathname === "/" || pathname.startsWith("/pair")) return null;
+  if (
+    pathname === "/" ||
+    pathname.startsWith("/pair") ||
+    pathname.startsWith("/login")
+  )
+    return null;
 
   return (
     <div className="mt-8 flex gap-2 border-t border-surface pt-4">

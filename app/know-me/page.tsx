@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { questionsByType } from "@/lib/questions";
+import { useInongSession } from "@/lib/useInongSession";
 import RevealCard from "@/components/RevealCard";
 
 type Experience = {
@@ -13,9 +14,7 @@ type Experience = {
 };
 
 export default function KnowMePage() {
-  const [profileId, setProfileId] = useState<string | null>(null);
-  const [linkId, setLinkId] = useState<string | null>(null);
-  const [friendName, setFriendName] = useState("your Inong");
+  const { userId, linkId, friendName, ready } = useInongSession();
   const [experience, setExperience] = useState<Experience | null>(null);
   const [selfAnswer, setSelfAnswer] = useState<string | null>(null);
   const [predictionAnswer, setPredictionAnswer] = useState<string | null>(
@@ -24,38 +23,15 @@ export default function KnowMePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setProfileId(localStorage.getItem("inong_profile_id"));
-    setLinkId(localStorage.getItem("inong_link_id"));
-  }, []);
-
-  useEffect(() => {
-    if (!linkId || !profileId) return;
+    if (!ready || !linkId || !userId) return;
     load();
     const interval = setInterval(load, 2500);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkId, profileId]);
+  }, [ready, linkId, userId]);
 
   async function load() {
-    if (!linkId || !profileId) return;
-
-    const { data: link } = await supabase
-      .from("inong_links")
-      .select("user_a, user_b")
-      .eq("id", linkId)
-      .single();
-
-    if (link) {
-      const otherId = link.user_a === profileId ? link.user_b : link.user_a;
-      if (otherId) {
-        const { data: other } = await supabase
-          .from("profiles")
-          .select("display_name")
-          .eq("id", otherId)
-          .single();
-        if (other) setFriendName(other.display_name);
-      }
-    }
+    if (!linkId || !userId) return;
 
     const { data: experiences } = await supabase
       .from("experiences")
@@ -64,23 +40,19 @@ export default function KnowMePage() {
       .eq("type", "know_me")
       .order("created_at", { ascending: true });
 
-    let current = (experiences ?? []).find((exp) => true);
-    // find first experience without both responses complete
+    let current: Experience | undefined;
     for (const exp of experiences ?? []) {
       const { data: responses } = await supabase
         .from("responses")
         .select("profile_id, answer, is_prediction")
         .eq("experience_id", exp.id);
-      const complete = (responses ?? []).length >= 2;
-      if (!complete) {
+      if ((responses ?? []).length < 2) {
         current = exp as Experience;
         break;
       }
-      current = undefined as any;
     }
 
     if (!current) {
-      // create a new one from the question bank
       const used = new Set((experiences ?? []).map((e: any) => e.question));
       const bank = questionsByType("know_me");
       const next = bank.find((q) => !used.has(q.prompt));
@@ -92,7 +64,7 @@ export default function KnowMePage() {
             type: "know_me",
             question: next.prompt,
             options: next.options,
-            created_by: profileId,
+            created_by: userId,
           })
           .select()
           .single();
@@ -101,21 +73,21 @@ export default function KnowMePage() {
     }
 
     if (current) {
-      setExperience(current as Experience);
+      setExperience(current);
       const { data: responses } = await supabase
         .from("responses")
         .select("profile_id, answer, is_prediction")
-        .eq("experience_id", (current as Experience).id);
+        .eq("experience_id", current.id);
 
-      const mine = (responses ?? []).find((r) => r.profile_id === profileId);
-      const theirs = (responses ?? []).find((r) => r.profile_id !== profileId);
+      const mine = (responses ?? []).find((r) => r.profile_id === userId);
+      const theirs = (responses ?? []).find((r) => r.profile_id !== userId);
 
-      if (mine) setSelfAnswer(mine.answer);
-      if ((current as Experience).created_by === profileId) {
+      if (current.created_by === userId) {
+        setSelfAnswer(mine?.answer ?? null);
         setPredictionAnswer(theirs?.answer ?? null);
       } else {
         setPredictionAnswer(mine?.answer ?? null);
-        if (theirs) setSelfAnswer(theirs.answer);
+        setSelfAnswer(theirs?.answer ?? null);
       }
     }
 
@@ -123,29 +95,21 @@ export default function KnowMePage() {
   }
 
   async function submitAnswer(option: string) {
-    if (!experience || !profileId) return;
-    const isSubject = experience.created_by === profileId;
+    if (!experience || !userId) return;
+    const isSubject = experience.created_by === userId;
     await supabase.from("responses").insert({
       experience_id: experience.id,
-      profile_id: profileId,
+      profile_id: userId,
       answer: option,
       is_prediction: !isSubject,
     });
     load();
   }
 
-  if (loading) {
+  if (!ready || loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-mute">
         Loading your Inong...
-      </div>
-    );
-  }
-
-  if (!linkId || !profileId) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <p className="text-mute">You need to add your Inong first.</p>
       </div>
     );
   }
@@ -158,7 +122,7 @@ export default function KnowMePage() {
     );
   }
 
-  const isSubject = experience.created_by === profileId;
+  const isSubject = experience.created_by === userId;
   const bothAnswered = selfAnswer && predictionAnswer;
 
   if (bothAnswered) {

@@ -16,7 +16,7 @@ export default function Home() {
       </div>
 
       <Link
-        href="/pair"
+        href="/login"
         className="w-full rounded-full bg-coral py-4 text-center font-medium text-ink transition hover:opacity-90"
       >
         Add your Inong

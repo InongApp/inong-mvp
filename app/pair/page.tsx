@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -10,39 +10,56 @@ function randomCode() {
 
 export default function PairPage() {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
   const [mode, setMode] = useState<"choose" | "create" | "join">("choose");
   const [joinCode, setJoinCode] = useState("");
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    async function check() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      setUserId(user.id);
+
+      const { data: link } = await supabase
+        .from("inong_links")
+        .select("id")
+        .or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (link) {
+        router.replace("/know-me");
+        return;
+      }
+
+      setChecking(false);
+    }
+    check();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleCreate() {
-    if (!name.trim()) return setError("Enter your name first.");
+    if (!userId) return;
     setLoading(true);
     setError(null);
     try {
-      const { data: profile, error: profileErr } = await supabase
-        .from("profiles")
-        .insert({ display_name: name.trim() })
-        .select()
-        .single();
-      if (profileErr) throw profileErr;
-
       const code = randomCode();
-      const { data: link, error: linkErr } = await supabase
-        .from("inong_links")
-        .insert({
-          user_a: profile.id,
-          invite_code: code,
-          status: "pending",
-        })
-        .select()
-        .single();
+      const { error: linkErr } = await supabase.from("inong_links").insert({
+        user_a: userId,
+        invite_code: code,
+        status: "pending",
+      });
       if (linkErr) throw linkErr;
-
-      localStorage.setItem("inong_profile_id", profile.id);
-      localStorage.setItem("inong_link_id", link.id);
       setInviteCode(code);
     } catch (e: any) {
       setError(e.message ?? "Something went wrong.");
@@ -52,7 +69,7 @@ export default function PairPage() {
   }
 
   async function handleJoin() {
-    if (!name.trim()) return setError("Enter your name first.");
+    if (!userId) return;
     if (!joinCode.trim()) return setError("Enter the invite code.");
     setLoading(true);
     setError(null);
@@ -64,28 +81,28 @@ export default function PairPage() {
         .eq("status", "pending")
         .single();
       if (linkErr || !link) throw new Error("That code doesn't look right.");
-
-      const { data: profile, error: profileErr } = await supabase
-        .from("profiles")
-        .insert({ display_name: name.trim() })
-        .select()
-        .single();
-      if (profileErr) throw profileErr;
+      if (link.user_a === userId) throw new Error("That's your own invite code.");
 
       const { error: updateErr } = await supabase
         .from("inong_links")
-        .update({ user_b: profile.id, status: "active" })
+        .update({ user_b: userId, status: "active" })
         .eq("id", link.id);
       if (updateErr) throw updateErr;
 
-      localStorage.setItem("inong_profile_id", profile.id);
-      localStorage.setItem("inong_link_id", link.id);
       router.push("/know-me");
     } catch (e: any) {
       setError(e.message ?? "Something went wrong.");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-mute">
+        Checking your account...
+      </div>
+    );
   }
 
   if (inviteCode) {
@@ -113,14 +130,6 @@ export default function PairPage() {
   return (
     <div className="flex flex-1 flex-col justify-center">
       <h1 className="font-serif text-2xl font-semibold">Add your Inong</h1>
-
-      <label className="mt-8 text-sm text-mute">Your name</label>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="e.g. Thabo"
-        className="mt-2 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
-      />
 
       {mode === "choose" && (
         <div className="mt-8 space-y-3">

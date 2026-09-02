@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ExperienceNav from "@/components/ExperienceNav";
+import AuthBar from "@/components/AuthBar";
 
 export const metadata: Metadata = {
   title: "INONG",
@@ -16,6 +17,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-screen bg-ink text-paper">
         <div className="mx-auto flex min-h-screen max-w-md flex-col px-6 py-8">
+          <AuthBar />
           <img
             src="/logo.png"
             alt="INONG"
