@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { questionsByType } from "@/lib/questions";
-import { useInongSession } from "@/lib/useInongSession";
+import { useRoomSession } from "@/lib/useRoomSession";
 import RevealCard from "@/components/RevealCard";
 
 type Experience = {
@@ -14,7 +14,7 @@ type Experience = {
 };
 
 export default function KnowMePage() {
-  const { userId, linkId, friendName, ready } = useInongSession();
+  const { userId, roomId, friendName, ready } = useRoomSession();
   const [experience, setExperience] = useState<Experience | null>(null);
   const [selfAnswer, setSelfAnswer] = useState<string | null>(null);
   const [predictionAnswer, setPredictionAnswer] = useState<string | null>(
@@ -23,20 +23,20 @@ export default function KnowMePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!ready || !linkId || !userId) return;
+    if (!ready || !roomId || !userId) return;
     load();
     const interval = setInterval(load, 2500);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, linkId, userId]);
+  }, [ready, roomId, userId]);
 
   async function load() {
-    if (!linkId || !userId) return;
+    if (!roomId || !userId) return;
 
     const { data: experiences } = await supabase
       .from("experiences")
       .select("id, question, options, created_by")
-      .eq("link_id", linkId)
+      .eq("room_id", roomId)
       .eq("type", "know_me")
       .order("created_at", { ascending: true });
 
@@ -60,7 +60,7 @@ export default function KnowMePage() {
         const { data: created } = await supabase
           .from("experiences")
           .insert({
-            link_id: linkId,
+            room_id: roomId,
             type: "know_me",
             question: next.prompt,
             options: next.options,
@@ -184,3 +184,4 @@ export default function KnowMePage() {
     </div>
   );
 }
+

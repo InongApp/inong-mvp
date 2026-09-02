@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import ExperienceNav from "@/components/ExperienceNav";
 import AuthBar from "@/components/AuthBar";
 import RegisterServiceWorker from "@/components/RegisterServiceWorker";
 
@@ -45,9 +44,9 @@ export default function RootLayout({
             className="mx-auto h-16 w-auto"
           />
           <div className="flex flex-1 flex-col">{children}</div>
-          <ExperienceNav />
         </div>
       </body>
     </html>
   );
 }
+

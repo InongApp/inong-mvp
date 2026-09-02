@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -14,6 +14,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    // If you land back here (e.g. via the browser Back button) while
+    // already signed in, route away instantly instead of showing the form.
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        routeAfterAuth(data.session.user.id);
+      } else {
+        setCheckingSession(false);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function routeAfterAuth(userId: string) {
+    const pendingInvite =
+      typeof window !== "undefined"
+        ? localStorage.getItem("inong_pending_invite")
+        : null;
+    if (pendingInvite) {
+      router.push(`/join/${pendingInvite}`);
+      return;
+    }
+
+    router.push("/");
+  }
 
   async function afterAuth(userId: string) {
     // Make sure a profiles row exists for this user
@@ -30,25 +57,7 @@ export default function LoginPage() {
       });
     }
 
-    // If they arrived here via an invite link, send them straight back to it
-    const pendingInvite =
-      typeof window !== "undefined"
-        ? localStorage.getItem("inong_pending_invite")
-        : null;
-    if (pendingInvite) {
-      router.push(`/join/${pendingInvite}`);
-      return;
-    }
-
-    // Otherwise route based on whether they already have an active pairing
-    const { data: link } = await supabase
-      .from("inong_links")
-      .select("id")
-      .or(`user_a.eq.${userId},user_b.eq.${userId}`)
-      .eq("status", "active")
-      .maybeSingle();
-
-    router.push(link ? "/know-me" : "/pair");
+    await routeAfterAuth(userId);
   }
 
   async function handleSignUp() {
@@ -120,84 +129,102 @@ export default function LoginPage() {
     }
   }
 
-  return (
-    <div className="flex flex-1 flex-col justify-center">
-      <h1 className="font-serif text-2xl font-semibold">
-        {mode === "signup" ? "Create your account" : "Welcome back"}
-      </h1>
-
-      {mode === "signup" && (
-        <>
-          <label className="mt-8 text-sm text-mute">Your name</label>
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="e.g. Thabo"
-            className="mt-2 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
-          />
-        </>
-      )}
-
-      <label className="mt-6 text-sm text-mute">Email</label>
-      <input
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="you@example.com"
-        className="mt-2 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
-      />
-
-      <label className="mt-6 text-sm text-mute">Password</label>
-      <div className="mt-2 flex items-center rounded-card bg-surface px-4 focus-within:ring-2 focus-within:ring-coral">
-        <input
-          type={showPassword ? "text" : "password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="At least 6 characters"
-          className="flex-1 bg-transparent py-3 text-paper placeholder:text-mute focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => setShowPassword((s) => !s)}
-          className="pl-3 text-xs text-mute hover:text-paper"
-        >
-          {showPassword ? "Hide" : "Show"}
-        </button>
+  if (checkingSession) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-mute">
+        Checking your account...
       </div>
+    );
+  }
 
-      {mode === "signin" && (
+  return (
+    <div className="flex flex-1 flex-col">
+      <button
+        onClick={() => router.push("/")}
+        className="self-start text-sm text-mute hover:text-paper"
+      >
+        ← Back
+      </button>
+
+      <div className="flex flex-1 flex-col justify-center">
+        <h1 className="font-serif text-2xl font-semibold">
+          {mode === "signup" ? "Create your account" : "Welcome back"}
+        </h1>
+
+        {mode === "signup" && (
+          <>
+            <label className="mt-8 text-sm text-mute">Your name</label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="e.g. Thabo"
+              className="mt-2 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
+            />
+          </>
+        )}
+
+        <label className="mt-6 text-sm text-mute">Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          className="mt-2 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
+        />
+
+        <label className="mt-6 text-sm text-mute">Password</label>
+        <div className="mt-2 flex items-center rounded-card bg-surface px-4 focus-within:ring-2 focus-within:ring-coral">
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 6 characters"
+            className="flex-1 bg-transparent py-3 text-paper placeholder:text-mute focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((s) => !s)}
+            className="pl-3 text-xs text-mute hover:text-paper"
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
+
+        {mode === "signin" && (
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            className="mt-3 text-left text-sm text-mute hover:text-paper"
+          >
+            Forgot password?
+          </button>
+        )}
+
         <button
-          type="button"
-          onClick={handleForgotPassword}
-          className="mt-3 text-left text-sm text-mute hover:text-paper"
+          onClick={mode === "signup" ? handleSignUp : handleSignIn}
+          disabled={loading}
+          className="mt-8 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
         >
-          Forgot password?
+          {loading ? "..." : mode === "signup" ? "Sign up" : "Sign in"}
         </button>
-      )}
 
-      <button
-        onClick={mode === "signup" ? handleSignUp : handleSignIn}
-        disabled={loading}
-        className="mt-8 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
-      >
-        {loading ? "..." : mode === "signup" ? "Sign up" : "Sign in"}
-      </button>
+        <button
+          onClick={() => {
+            setMode(mode === "signup" ? "signin" : "signup");
+            setError(null);
+            setInfo(null);
+          }}
+          className="mt-4 text-center text-sm text-mute hover:text-paper"
+        >
+          {mode === "signup"
+            ? "Already have an account? Sign in"
+            : "New here? Create an account"}
+        </button>
 
-      <button
-        onClick={() => {
-          setMode(mode === "signup" ? "signin" : "signup");
-          setError(null);
-          setInfo(null);
-        }}
-        className="mt-4 text-center text-sm text-mute hover:text-paper"
-      >
-        {mode === "signup"
-          ? "Already have an account? Sign in"
-          : "New here? Create an account"}
-      </button>
-
-      {error && <p className="mt-4 text-sm text-coral">{error}</p>}
-      {info && <p className="mt-4 text-sm text-skyblue">{info}</p>}
+        {error && <p className="mt-4 text-sm text-coral">{error}</p>}
+        {info && <p className="mt-4 text-sm text-skyblue">{info}</p>}
+      </div>
     </div>
   );
 }
+
