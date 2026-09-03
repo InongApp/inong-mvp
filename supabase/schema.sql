@@ -58,6 +58,7 @@ create table experiences (
   question text not null,
   options jsonb, -- nullable: null means an open-ended (free-text) custom question
   created_by uuid not null references profiles(id),
+  ai_matched boolean, -- cached AI judgment for free-text rounds; null = not yet judged
   created_at timestamptz not null default now()
 );
 
@@ -170,6 +171,13 @@ create policy "experiences: members read" on experiences
 
 create policy "experiences: members create" on experiences
   for insert with check (
+    exists (select 1 from room_members m where m.room_id = experiences.room_id and m.profile_id = auth.uid())
+  );
+
+-- Needed so either room member can cache the AI's free-text match judgment
+-- onto the experience row the first time a round completes.
+create policy "experiences: members update" on experiences
+  for update using (
     exists (select 1 from room_members m where m.room_id = experiences.room_id and m.profile_id = auth.uid())
   );
 

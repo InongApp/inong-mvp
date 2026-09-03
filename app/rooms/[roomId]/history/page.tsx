@@ -51,7 +51,7 @@ export default function HistoryPage() {
 
     const { data: experiences } = await supabase
       .from("experiences")
-      .select("id, type, question, created_by, created_at")
+      .select("id, type, question, options, created_by, ai_matched, created_at")
       .eq("room_id", params.roomId)
       .in("type", ["know_me", "bet_on_me"])
       .order("created_at", { ascending: false });
@@ -71,14 +71,21 @@ export default function HistoryPage() {
       if (rs.length < 2) continue; // only show completed rounds
       const self = rs.find((r: any) => !r.is_prediction);
       const pred = rs.find((r: any) => r.is_prediction);
+      if (!self || !pred) continue;
+
+      const hasOptions = !!e.options && e.options.length > 0;
+      const matched = hasOptions
+        ? self.answer === pred.answer
+        : e.ai_matched === true;
+
       list.push({
         id: e.id,
         type: e.type,
         question: e.question,
         createdAt: e.created_at,
-        selfAnswer: self?.answer ?? null,
-        predictionAnswer: pred?.answer ?? null,
-        matched: !!self && !!pred && self.answer === pred.answer,
+        selfAnswer: self.answer,
+        predictionAnswer: pred.answer,
+        matched,
       });
     }
     setEntries(list);

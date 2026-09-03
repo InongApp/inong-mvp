@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { questionsByType } from "@/lib/questions";
 import { useRoomSession } from "@/lib/useRoomSession";
 import { getDayProgress, verdictFor, DAY_QUESTION_LIMIT, DayProgress } from "@/lib/roomStats";
+import { resolveMatch } from "@/lib/matchJudge";
 import RevealCard from "@/components/RevealCard";
 import CommentThread from "@/components/CommentThread";
 
@@ -14,6 +15,7 @@ type Experience = {
   question: string;
   options: string[] | null;
   created_by: string;
+  ai_matched: boolean | null;
 };
 
 export default function BetOnMePage() {
@@ -25,8 +27,11 @@ export default function BetOnMePage() {
   const [predictionAnswer, setPredictionAnswer] = useState<string | null>(
     null
   );
+  const [roundMatched, setRoundMatched] = useState<boolean | null>(null);
+  const [matchedForId, setMatchedForId] = useState<string | null>(null);
   const [dayProgress, setDayProgress] = useState<DayProgress | null>(null);
   const [loading, setLoading] = useState(true);
+  const [asking, setAsking] = useState(false);
   const [askMode, setAskMode] = useState<"custom" | null>(null);
   const [customQuestion, setCustomQuestion] = useState("");
   const [customOptions, setCustomOptions] = useState<string[]>([]);
@@ -47,7 +52,7 @@ export default function BetOnMePage() {
 
     const { data: experiences } = await supabase
       .from("experiences")
-      .select("id, question, options, created_by")
+      .select("id, question, options, created_by, ai_matched")
       .eq("room_id", roomId)
       .eq("type", "bet_on_me")
       .order("created_at", { ascending: true });
@@ -74,12 +79,22 @@ export default function BetOnMePage() {
       const mine = (responses ?? []).find((r) => r.profile_id === userId);
       const theirs = (responses ?? []).find((r) => r.profile_id !== userId);
 
+      let self: string | null;
+      let prediction: string | null;
       if (last.created_by === userId) {
-        setPredictionAnswer(mine?.answer ?? null);
-        setSelfAnswer(theirs?.answer ?? null);
+        prediction = mine?.answer ?? null;
+        self = theirs?.answer ?? null;
       } else {
-        setSelfAnswer(mine?.answer ?? null);
-        setPredictionAnswer(theirs?.answer ?? null);
+        self = mine?.answer ?? null;
+        prediction = theirs?.answer ?? null;
+      }
+      setSelfAnswer(self);
+      setPredictionAnswer(prediction);
+
+      if (complete && self && prediction && matchedForId !== last.id) {
+        const matched = await resolveMatch(last, self, prediction);
+        setRoundMatched(matched);
+        setMatchedForId(last.id);
       }
     }
 
@@ -92,30 +107,63 @@ export default function BetOnMePage() {
   async function createFromBank() {
     if (!roomId || !userId) return;
     setError(null);
-    const { data: existing } = await supabase
-      .from("experiences")
-      .select("question")
-      .eq("room_id", roomId)
-      .eq("type", "bet_on_me");
-    const used = new Set((existing ?? []).map((e: any) => e.question));
+    setAsking(true);
+    try {
+      const { data: existing } = await supabase
+        .from("experiences")
+        .select("question")
+        .eq("room_id", roomId)
+        .eq("type", "bet_on_me");
+      const used = (existing ?? []).map((e: any) => e.question);
 
-    const bank = questionsByType("bet_on_me");
-    const next = bank.find((q) => !used.has(q.prompt));
-    if (!next) {
-      setError(
-        "You've used every question in the bank — try 'Ask your own' instead."
-      );
-      return;
+      let question: string | null = null;
+      let options: string[] | null = null;
+
+      try {
+        const res = await fetch("/api/generate-question", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "bet_on_me",
+            usedQuestions: used,
+            askerName: "you",
+            subjectName: friendName,
+          }),
+        });
+        const data = await res.json();
+        if (data.question) {
+          question = data.question;
+          options = data.options ?? null;
+        }
+      } catch {
+        // fall through to static bank below
+      }
+
+      if (!question) {
+        const usedSet = new Set(used);
+        const bank = questionsByType("bet_on_me");
+        const next = bank.find((q) => !usedSet.has(q.prompt));
+        if (!next) {
+          setError("Couldn't generate a question right now — try again in a moment.");
+          setAsking(false);
+          return;
+        }
+        question = next.prompt;
+        options = next.options;
+      }
+
+      const { error: insertErr } = await supabase.from("experiences").insert({
+        room_id: roomId,
+        type: "bet_on_me",
+        question,
+        options,
+        created_by: userId,
+      });
+      if (insertErr) setError(insertErr.message);
+      else load();
+    } finally {
+      setAsking(false);
     }
-    const { error: insertErr } = await supabase.from("experiences").insert({
-      room_id: roomId,
-      type: "bet_on_me",
-      question: next.prompt,
-      options: next.options,
-      created_by: userId,
-    });
-    if (insertErr) setError(insertErr.message);
-    else load();
   }
 
   async function submitCustomQuestion() {
@@ -181,14 +229,16 @@ export default function BetOnMePage() {
     </div>
   );
 
+  const currentMatched = matchedForId === experience?.id ? roundMatched : null;
+
   if (dayProgress.capped) {
     return (
       <div className="flex flex-1 flex-col">
         {scoreboard}
-        {isComplete && experience && (
+        {isComplete && experience && currentMatched !== null && (
           <>
             <RevealCard
-              matched={selfAnswer === predictionAnswer}
+              matched={currentMatched}
               yourAnswer={
                 (experience.created_by === userId
                   ? predictionAnswer
@@ -237,10 +287,10 @@ export default function BetOnMePage() {
     return (
       <div className="flex flex-1 flex-col">
         {scoreboard}
-        {isComplete && experience && (
+        {isComplete && experience && currentMatched !== null && (
           <>
             <RevealCard
-              matched={selfAnswer === predictionAnswer}
+              matched={currentMatched}
               yourAnswer={
                 (experience.created_by === userId
                   ? predictionAnswer
@@ -333,9 +383,10 @@ export default function BetOnMePage() {
             <div className="mt-8 w-full space-y-3">
               <button
                 onClick={createFromBank}
-                className="w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90"
+                disabled={asking}
+                className="w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
               >
-                Surprise me
+                {asking ? "Thinking of one..." : "Surprise me"}
               </button>
               <button
                 onClick={() => setAskMode("custom")}
@@ -356,20 +407,22 @@ export default function BetOnMePage() {
     return (
       <div className="flex flex-1 flex-col">
         {scoreboard}
-        <RevealCard
-          matched={selfAnswer === predictionAnswer}
-          yourAnswer={
-            (experience!.created_by === userId
-              ? predictionAnswer
-              : selfAnswer)!
-          }
-          theirGuess={
-            (experience!.created_by === userId
-              ? selfAnswer
-              : predictionAnswer)!
-          }
-          friendName={friendName}
-        />
+        {currentMatched !== null && (
+          <RevealCard
+            matched={currentMatched}
+            yourAnswer={
+              (experience!.created_by === userId
+                ? predictionAnswer
+                : selfAnswer)!
+            }
+            theirGuess={
+              (experience!.created_by === userId
+                ? selfAnswer
+                : predictionAnswer)!
+            }
+            friendName={friendName}
+          />
+        )}
         <CommentThread
           experienceId={experience!.id}
           userId={userId!}
