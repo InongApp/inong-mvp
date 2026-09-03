@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { questionsByType } from "@/lib/questions";
 import { useRoomSession } from "@/lib/useRoomSession";
+import { getDayProgress, verdictFor, DAY_QUESTION_LIMIT, DayProgress } from "@/lib/roomStats";
 import RevealCard from "@/components/RevealCard";
 import CommentThread from "@/components/CommentThread";
 
@@ -14,11 +16,8 @@ type Experience = {
   created_by: string;
 };
 
-// Same role convention as Know Me: the ASKER (created_by) predicts; the
-// other member answers for themselves. Being the subject one round earns
-// you the next turn to ask.
-
 export default function BetOnMePage() {
+  const router = useRouter();
   const { userId, roomId, friendName, ready } = useRoomSession();
   const [experience, setExperience] = useState<Experience | null>(null);
   const [isComplete, setIsComplete] = useState(false);
@@ -26,6 +25,7 @@ export default function BetOnMePage() {
   const [predictionAnswer, setPredictionAnswer] = useState<string | null>(
     null
   );
+  const [dayProgress, setDayProgress] = useState<DayProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [askMode, setAskMode] = useState<"custom" | null>(null);
   const [customQuestion, setCustomQuestion] = useState("");
@@ -61,29 +61,30 @@ export default function BetOnMePage() {
       setIsComplete(false);
       setSelfAnswer(null);
       setPredictionAnswer(null);
-      setLoading(false);
-      return;
-    }
-
-    const { data: responses } = await supabase
-      .from("responses")
-      .select("profile_id, answer, is_prediction")
-      .eq("experience_id", last.id);
-
-    const complete = (responses ?? []).length >= 2;
-    setExperience(last);
-    setIsComplete(complete);
-
-    const mine = (responses ?? []).find((r) => r.profile_id === userId);
-    const theirs = (responses ?? []).find((r) => r.profile_id !== userId);
-
-    if (last.created_by === userId) {
-      setPredictionAnswer(mine?.answer ?? null);
-      setSelfAnswer(theirs?.answer ?? null);
     } else {
-      setSelfAnswer(mine?.answer ?? null);
-      setPredictionAnswer(theirs?.answer ?? null);
+      const { data: responses } = await supabase
+        .from("responses")
+        .select("profile_id, answer, is_prediction")
+        .eq("experience_id", last.id);
+
+      const complete = (responses ?? []).length >= 2;
+      setExperience(last);
+      setIsComplete(complete);
+
+      const mine = (responses ?? []).find((r) => r.profile_id === userId);
+      const theirs = (responses ?? []).find((r) => r.profile_id !== userId);
+
+      if (last.created_by === userId) {
+        setPredictionAnswer(mine?.answer ?? null);
+        setSelfAnswer(theirs?.answer ?? null);
+      } else {
+        setSelfAnswer(mine?.answer ?? null);
+        setPredictionAnswer(theirs?.answer ?? null);
+      }
     }
+
+    const progress = await getDayProgress(roomId, "bet_on_me");
+    setDayProgress(progress);
 
     setLoading(false);
   }
@@ -157,10 +158,74 @@ export default function BetOnMePage() {
     load();
   }
 
-  if (!ready || loading) {
+  if (!ready || loading || !dayProgress) {
     return (
       <div className="flex flex-1 items-center justify-center text-mute">
         Loading your Inong...
+      </div>
+    );
+  }
+
+  const scoreboard = (
+    <div className="mb-4 flex items-center justify-between rounded-card bg-surface px-4 py-2 text-xs text-mute">
+      <span>
+        Today: {dayProgress.completedToday}/{DAY_QUESTION_LIMIT} ·{" "}
+        {dayProgress.matchesToday} matched
+      </span>
+      <button
+        onClick={() => router.push(`/rooms/${roomId}/history`)}
+        className="text-skyblue hover:underline"
+      >
+        History
+      </button>
+    </div>
+  );
+
+  if (dayProgress.capped) {
+    return (
+      <div className="flex flex-1 flex-col">
+        {scoreboard}
+        {isComplete && experience && (
+          <>
+            <RevealCard
+              matched={selfAnswer === predictionAnswer}
+              yourAnswer={
+                (experience.created_by === userId
+                  ? predictionAnswer
+                  : selfAnswer)!
+              }
+              theirGuess={
+                (experience.created_by === userId
+                  ? selfAnswer
+                  : predictionAnswer)!
+              }
+              friendName={friendName}
+            />
+            <CommentThread
+              experienceId={experience.id}
+              userId={userId!}
+              friendName={friendName}
+            />
+          </>
+        )}
+        <div className="mt-6 flex flex-1 flex-col items-center justify-center text-center">
+          <p className="text-sm uppercase tracking-wide text-mute">
+            Today&rsquo;s session complete
+          </p>
+          <p className="font-serif mt-3 text-2xl font-semibold text-skyblue">
+            {dayProgress.matchesToday}/{DAY_QUESTION_LIMIT} matched
+          </p>
+          <p className="mt-3 max-w-xs text-mute">
+            {verdictFor(dayProgress.matchesToday, DAY_QUESTION_LIMIT)}
+          </p>
+          <p className="mt-6 text-sm text-mute">Come back tomorrow for more.</p>
+          <button
+            onClick={() => router.push(`/rooms/${roomId}/history`)}
+            className="mt-6 rounded-full border border-mute px-6 py-3 text-sm text-paper hover:border-paper"
+          >
+            See full history
+          </button>
+        </div>
       </div>
     );
   }
@@ -171,6 +236,7 @@ export default function BetOnMePage() {
   if ((!experience || isComplete) && isMyTurn) {
     return (
       <div className="flex flex-1 flex-col">
+        {scoreboard}
         {isComplete && experience && (
           <>
             <RevealCard
@@ -289,6 +355,7 @@ export default function BetOnMePage() {
   if (isComplete && !isMyTurn) {
     return (
       <div className="flex flex-1 flex-col">
+        {scoreboard}
         <RevealCard
           matched={selfAnswer === predictionAnswer}
           yourAnswer={
@@ -320,59 +387,65 @@ export default function BetOnMePage() {
 
   if (alreadyAnswered) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <p className="text-sm uppercase tracking-wide text-mute">
-          Waiting on {friendName}
-        </p>
-        <p className="mt-4 max-w-xs text-mute">
-          Your answer&rsquo;s locked in. We&rsquo;ll reveal it once they&rsquo;ve
-          answered too.
-        </p>
+      <div className="flex flex-1 flex-col">
+        {scoreboard}
+        <div className="flex flex-1 flex-col items-center justify-center text-center">
+          <p className="text-sm uppercase tracking-wide text-mute">
+            Waiting on {friendName}
+          </p>
+          <p className="mt-4 max-w-xs text-mute">
+            Your answer&rsquo;s locked in. We&rsquo;ll reveal it once they&rsquo;ve
+            answered too.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col justify-center">
-      <p className="text-sm uppercase tracking-wide text-mute">
-        {isSubject ? "Answer for yourself" : `Bet on ${friendName}`}
-      </p>
-      <h1 className="font-serif mt-3 text-2xl font-semibold leading-snug">
-        {isSubject
-          ? experience!.question
-          : `What will ${friendName} pick? "${experience!.question}"`}
-      </h1>
+    <div className="flex flex-1 flex-col">
+      {scoreboard}
+      <div className="flex flex-1 flex-col justify-center">
+        <p className="text-sm uppercase tracking-wide text-mute">
+          {isSubject ? "Answer for yourself" : `Bet on ${friendName}`}
+        </p>
+        <h1 className="font-serif mt-3 text-2xl font-semibold leading-snug">
+          {isSubject
+            ? experience!.question
+            : `What will ${friendName} pick? "${experience!.question}"`}
+        </h1>
 
-      {experience!.options && experience!.options.length > 0 ? (
-        <div className="mt-8 space-y-3">
-          {experience!.options.map((option) => (
+        {experience!.options && experience!.options.length > 0 ? (
+          <div className="mt-8 space-y-3">
+            {experience!.options.map((option) => (
+              <button
+                key={option}
+                onClick={() => submitAnswer(option)}
+                className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue"
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-8">
+            <textarea
+              value={freeText}
+              onChange={(e) => setFreeText(e.target.value)}
+              placeholder="Type your answer..."
+              rows={3}
+              className="w-full rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
+            />
             <button
-              key={option}
-              onClick={() => submitAnswer(option)}
-              className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue"
+              onClick={() => freeText.trim() && submitAnswer(freeText.trim())}
+              disabled={!freeText.trim()}
+              className="mt-4 w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
             >
-              {option}
+              Send answer
             </button>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-8">
-          <textarea
-            value={freeText}
-            onChange={(e) => setFreeText(e.target.value)}
-            placeholder="Type your answer..."
-            rows={3}
-            className="w-full rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
-          />
-          <button
-            onClick={() => freeText.trim() && submitAnswer(freeText.trim())}
-            disabled={!freeText.trim()}
-            className="mt-4 w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
-          >
-            Send answer
-          </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
