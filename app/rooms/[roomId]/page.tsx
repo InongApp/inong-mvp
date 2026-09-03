@@ -181,9 +181,17 @@ export default function RoomPage() {
         ← All rooms
       </button>
 
-      <div className="mt-4">
-        <p className="text-xs uppercase tracking-wide text-mute">{typeLabel}</p>
-        <h1 className="font-serif text-2xl font-semibold">{roomTitle}</h1>
+      <div className="mt-4 flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-mute">{typeLabel}</p>
+          <h1 className="font-serif text-2xl font-semibold">{roomTitle}</h1>
+        </div>
+        <button
+          onClick={() => router.push(`/rooms/${room.id}/history`)}
+          className="text-xs text-mute hover:text-paper"
+        >
+          History & Score
+        </button>
       </div>
 
       {members.length > 0 && (
