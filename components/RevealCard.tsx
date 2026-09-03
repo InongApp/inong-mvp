@@ -5,7 +5,7 @@ type RevealCardProps = {
   yourAnswer: string;
   theirGuess: string;
   friendName: string;
-  onContinue: () => void;
+  onContinue?: () => void;
   continueLabel?: string;
 };
 
@@ -46,12 +46,15 @@ export default function RevealCard({
         </div>
       </div>
 
-      <button
-        onClick={onContinue}
-        className="mt-10 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
-      >
-        {continueLabel}
-      </button>
+      {onContinue && (
+        <button
+          onClick={onContinue}
+          className="mt-10 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
+        >
+          {continueLabel}
+        </button>
+      )}
     </div>
   );
 }
+

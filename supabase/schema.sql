@@ -56,7 +56,7 @@ create table experiences (
   room_id uuid not null references rooms(id) on delete cascade,
   type text not null check (type in ('know_me', 'bet_on_me')),
   question text not null,
-  options jsonb not null,
+  options jsonb, -- nullable: null means an open-ended (free-text) custom question
   created_by uuid not null references profiles(id),
   created_at timestamptz not null default now()
 );
@@ -71,9 +71,18 @@ create table responses (
   unique (experience_id, profile_id, is_prediction)
 );
 
+create table experience_comments (
+  id uuid primary key default uuid_generate_v4(),
+  experience_id uuid not null references experiences(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
 create index idx_room_members_profile on room_members(profile_id);
 create index idx_experiences_room on experiences(room_id);
 create index idx_responses_experience on responses(experience_id);
+create index idx_comments_experience on experience_comments(experience_id);
 
 -- =========================================================
 -- Row Level Security
@@ -85,6 +94,7 @@ alter table room_members enable row level security;
 alter table room_invites enable row level security;
 alter table experiences enable row level security;
 alter table responses enable row level security;
+alter table experience_comments enable row level security;
 
 -- PROFILES: read your own row, or any co-member's row (anyone sharing a room with you)
 create policy "profiles: read own or co-member" on profiles
@@ -103,10 +113,30 @@ create policy "profiles: insert own" on profiles
 create policy "profiles: update own" on profiles
   for update using (id = auth.uid());
 
--- ROOMS: read only if you're a member; create only as yourself
+-- Helper used below to check room membership without the checking
+-- policy re-triggering itself (avoids "infinite recursion detected").
+create or replace function is_room_member(p_room_id uuid, p_profile_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from room_members
+    where room_id = p_room_id and profile_id = p_profile_id
+  );
+$$;
+
+grant execute on function is_room_member(uuid, uuid) to authenticated;
+
+-- ROOMS: the creator can always see a room they made (even before their
+-- own membership row exists, which is the moment right after creating it),
+-- or any room they're already a member of.
 create policy "rooms: members read" on rooms
   for select using (
-    exists (select 1 from room_members m where m.room_id = rooms.id and m.profile_id = auth.uid())
+    created_by = auth.uid()
+    or is_room_member(rooms.id, auth.uid())
   );
 
 create policy "rooms: create as self" on rooms
@@ -115,7 +145,7 @@ create policy "rooms: create as self" on rooms
 -- ROOM_MEMBERS: read any row in a room you belong to; you can only ever insert yourself
 create policy "room_members: co-members read" on room_members
   for select using (
-    exists (select 1 from room_members m where m.room_id = room_members.room_id and m.profile_id = auth.uid())
+    is_room_member(room_members.room_id, auth.uid())
   );
 
 create policy "room_members: insert self" on room_members
@@ -159,6 +189,25 @@ create policy "responses: self insert" on responses
       select 1 from experiences e
       join room_members m on m.room_id = e.room_id
       where e.id = responses.experience_id and m.profile_id = auth.uid()
+    )
+  );
+
+create policy "experience_comments: room members read" on experience_comments
+  for select using (
+    exists (
+      select 1 from experiences e
+      join room_members m on m.room_id = e.room_id
+      where e.id = experience_comments.experience_id and m.profile_id = auth.uid()
+    )
+  );
+
+create policy "experience_comments: self insert" on experience_comments
+  for insert with check (
+    profile_id = auth.uid()
+    and exists (
+      select 1 from experiences e
+      join room_members m on m.room_id = e.room_id
+      where e.id = experience_comments.experience_id and m.profile_id = auth.uid()
     )
   );
 
