@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import AuthBar from "@/components/AuthBar";
 import RegisterServiceWorker from "@/components/RegisterServiceWorker";
+import InstallPrompt from "@/components/InstallPrompt";
+import PushOptIn from "@/components/PushOptIn";
 
 export const metadata: Metadata = {
   title: "INONG",
@@ -43,7 +45,11 @@ export default function RootLayout({
             alt="INONG"
             className="mx-auto h-16 w-auto"
           />
-          <div className="flex flex-1 flex-col">{children}</div>
+          <div className="flex flex-1 flex-col">
+            <InstallPrompt />
+            <PushOptIn />
+            {children}
+          </div>
         </div>
       </body>
     </html>

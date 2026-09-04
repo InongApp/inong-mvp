@@ -9,6 +9,7 @@ export function useRoomSession() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
+  const [friendId, setFriendId] = useState<string | null>(null);
   const [friendName, setFriendName] = useState("your Inong");
   const [ready, setReady] = useState(false);
 
@@ -34,9 +35,12 @@ export function useRoomSession() {
         .select("profile_id, profiles(display_name)")
         .eq("room_id", params.roomId);
 
-      const other = (memberRows ?? []).find((m: any) => m.profile_id !== uid);
+      const other: any = (memberRows ?? []).find(
+        (m: any) => m.profile_id !== uid
+      );
       if (other && active) {
-        setFriendName((other as any).profiles?.display_name ?? "your Inong");
+        setFriendId(other.profile_id);
+        setFriendName(other.profiles?.display_name ?? "your Inong");
       }
 
       if (active) setReady(true);
@@ -49,6 +53,6 @@ export function useRoomSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { userId, roomId, friendName, ready };
+  return { userId, roomId, friendId, friendName, ready };
 }
 

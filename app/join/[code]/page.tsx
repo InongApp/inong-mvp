@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { notify } from "@/lib/notifyClient";
 
 type Screen = "loading" | "invalid" | "preview" | "joining" | "error";
 
@@ -74,6 +75,27 @@ export default function JoinPage() {
       const roomId = roomIdData as unknown as string;
 
       localStorage.removeItem("inong_pending_invite");
+
+      // Notify the room creator right away — don't let this block navigation
+      (async () => {
+        const [{ data: room }, { data: myProfile }] = await Promise.all([
+          supabase.from("rooms").select("created_by").eq("id", roomId).single(),
+          supabase
+            .from("profiles")
+            .select("display_name")
+            .eq("id", session.user.id)
+            .single(),
+        ]);
+        if (room?.created_by && room.created_by !== session.user.id) {
+          notify(
+            room.created_by,
+            "New Inong! ❤️",
+            `${myProfile?.display_name ?? "Someone"} just joined your room`,
+            `/rooms/${roomId}`
+          );
+        }
+      })();
+
       router.replace(`/rooms/${roomId}`);
     } catch (e: any) {
       setError(e.message ?? "Something went wrong.");

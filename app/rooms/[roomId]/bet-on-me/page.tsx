@@ -7,6 +7,7 @@ import { questionsByType } from "@/lib/questions";
 import { useRoomSession } from "@/lib/useRoomSession";
 import { getDayProgress, verdictFor, DAY_QUESTION_LIMIT, DayProgress } from "@/lib/roomStats";
 import { resolveMatch } from "@/lib/matchJudge";
+import { notify } from "@/lib/notifyClient";
 import RevealCard from "@/components/RevealCard";
 import CommentThread from "@/components/CommentThread";
 
@@ -20,7 +21,7 @@ type Experience = {
 
 export default function BetOnMePage() {
   const router = useRouter();
-  const { userId, roomId, friendName, ready } = useRoomSession();
+  const { userId, roomId, friendId, friendName, ready } = useRoomSession();
   const [experience, setExperience] = useState<Experience | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [selfAnswer, setSelfAnswer] = useState<string | null>(null);
@@ -160,7 +161,17 @@ export default function BetOnMePage() {
         created_by: userId,
       });
       if (insertErr) setError(insertErr.message);
-      else load();
+      else {
+        if (friendId) {
+          notify(
+            friendId,
+            "New bet in Bet on Me 🎯",
+            question,
+            `/rooms/${roomId}/bet-on-me`
+          );
+        }
+        load();
+      }
     } finally {
       setAsking(false);
     }
@@ -181,6 +192,14 @@ export default function BetOnMePage() {
       setError(insertErr.message);
       return;
     }
+    if (friendId) {
+      notify(
+        friendId,
+        "New bet in Bet on Me 🎯",
+        customQuestion.trim(),
+        `/rooms/${roomId}/bet-on-me`
+      );
+    }
     setCustomQuestion("");
     setCustomOptions([]);
     setAskMode(null);
@@ -196,12 +215,23 @@ export default function BetOnMePage() {
   async function submitAnswer(option: string) {
     if (!experience || !userId) return;
     const isSubject = experience.created_by !== userId;
+    const otherAlreadyAnswered = isSubject
+      ? !!predictionAnswer
+      : !!selfAnswer;
     await supabase.from("responses").insert({
       experience_id: experience.id,
       profile_id: userId,
       answer: option,
       is_prediction: !isSubject,
     });
+    if (otherAlreadyAnswered && friendId) {
+      notify(
+        friendId,
+        "Your reveal is ready ❤️",
+        experience.question,
+        `/rooms/${roomId}/bet-on-me`
+      );
+    }
     setFreeText("");
     load();
   }

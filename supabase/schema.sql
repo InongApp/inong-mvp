@@ -80,6 +80,15 @@ create table experience_comments (
   created_at timestamptz not null default now()
 );
 
+create table push_subscriptions (
+  id uuid primary key default uuid_generate_v4(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
 create index idx_room_members_profile on room_members(profile_id);
 create index idx_experiences_room on experiences(room_id);
 create index idx_responses_experience on responses(experience_id);
@@ -96,6 +105,7 @@ alter table room_invites enable row level security;
 alter table experiences enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
+alter table push_subscriptions enable row level security;
 
 -- PROFILES: read your own row, or any co-member's row (anyone sharing a room with you)
 create policy "profiles: read own or co-member" on profiles
@@ -218,6 +228,21 @@ create policy "experience_comments: self insert" on experience_comments
       where e.id = experience_comments.experience_id and m.profile_id = auth.uid()
     )
   );
+
+-- PUSH_SUBSCRIPTIONS: strictly your own. The server-side send route uses the
+-- service role key and bypasses these policies entirely (it needs to read
+-- the OTHER person's subscriptions to notify them).
+create policy "push_subscriptions: own read" on push_subscriptions
+  for select using (profile_id = auth.uid());
+
+create policy "push_subscriptions: own insert" on push_subscriptions
+  for insert with check (profile_id = auth.uid());
+
+create policy "push_subscriptions: own update" on push_subscriptions
+  for update using (profile_id = auth.uid());
+
+create policy "push_subscriptions: own delete" on push_subscriptions
+  for delete using (profile_id = auth.uid());
 
 -- =========================================================
 -- Invite preview — shows an outsider WHO invited them and to WHAT KIND
