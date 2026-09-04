@@ -43,13 +43,19 @@ export default function RootLayout({
           <img
             src="/logo.png"
             alt="INONG"
-            className="mx-auto h-16 w-auto"
+            className="mx-auto h-24 w-auto"
           />
-          <div className="flex flex-1 flex-col">
+          <p className="mt-1 text-center text-xs uppercase tracking-widest text-mute">
+            Deepen your relationships
+          </p>
+          <div className="mt-4 flex flex-1 flex-col">
             <InstallPrompt />
             <PushOptIn />
             {children}
           </div>
+          <footer className="mt-8 pb-2 text-center text-[10px] leading-relaxed text-mute">
+            A digital product of Zero2Billionaires Amavulandlela (Pty) Ltd
+          </footer>
         </div>
       </body>
     </html>
