@@ -4,6 +4,7 @@ type Discovery = { id: string; summary: string };
 
 export default function RoundRecap({
   roundNumber,
+  typeLabel,
   matches,
   total,
   friendName,
@@ -13,6 +14,7 @@ export default function RoundRecap({
   accent = "coral",
 }: {
   roundNumber: number;
+  typeLabel?: string | null;
   matches: number;
   total: number;
   friendName: string;
@@ -36,7 +38,8 @@ export default function RoundRecap({
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
       <p className="text-sm uppercase tracking-wide text-mute">
-        Round {roundNumber} complete
+        Round {roundNumber}
+        {typeLabel ? ` — ${typeLabel}` : ""} complete
       </p>
       <p className={`font-serif mt-3 text-3xl font-semibold ${accentClass}`}>
         {matches}/{total} matched

@@ -5,9 +5,71 @@ import { supabase } from "@/lib/supabase";
 // over time) stays open-ended; only the Round is finite.
 export const ROUND_SIZE = 10;
 
+// The Relationship Intelligence layer: WHAT KIND of round comes next,
+// not just another random 5 questions. Selection is plain rule-based
+// code — no AI spent deciding this, only on writing the question itself.
+export const ROUND_TYPES = [
+  {
+    key: "discover",
+    label: "Discover",
+    description: "Explore something brand new about each other.",
+  },
+  {
+    key: "play",
+    label: "Play",
+    description: "Quick, fun, and a little competitive.",
+  },
+  {
+    key: "deepen",
+    label: "Deepen",
+    description: "Going deeper on something you discovered.",
+  },
+  {
+    key: "surprise",
+    label: "Surprise",
+    description: "Expect the unexpected.",
+  },
+  {
+    key: "connection",
+    label: "Connection",
+    description: "About the two of you together, not just one of you.",
+  },
+  {
+    key: "memory",
+    label: "Memory",
+    description: "Revisiting something from your journey.",
+  },
+] as const;
+
+export type RoundType = (typeof ROUND_TYPES)[number]["key"];
+
+export function roundTypeInfo(key: RoundType | null) {
+  return ROUND_TYPES.find((r) => r.key === key) ?? null;
+}
+
+async function selectNextRoundType(
+  roomId: string,
+  lastType: RoundType | null
+): Promise<RoundType> {
+  if (!lastType) return "discover"; // round 1 always starts here — nothing to deepen/revisit yet
+
+  const { count } = await supabase
+    .from("discoveries")
+    .select("id", { count: "exact", head: true })
+    .eq("room_id", roomId);
+  const hasDiscoveries = (count ?? 0) > 0;
+
+  const candidates = ROUND_TYPES.map((r) => r.key)
+    .filter((k) => hasDiscoveries || (k !== "deepen" && k !== "memory")) // nothing to deepen/revisit yet
+    .filter((k) => k !== lastType); // never repeat the immediately previous type
+
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 export type RoundRow = {
   id: string;
   round_number: number;
+  round_type: RoundType | null;
   status: "active" | "complete";
 };
 
@@ -20,7 +82,7 @@ export async function getLatestRound(
 ): Promise<RoundRow | null> {
   const { data } = await supabase
     .from("experience_rounds")
-    .select("id, round_number, status")
+    .select("id, round_number, round_type, status")
     .eq("room_id", roomId)
     .eq("type", type)
     .order("round_number", { ascending: false })
@@ -38,6 +100,7 @@ export async function startNextRound(
 ): Promise<RoundRow> {
   const last = await getLatestRound(roomId, type);
   const nextNumber = (last?.round_number ?? 0) + 1;
+  const nextType = await selectNextRoundType(roomId, last?.round_type ?? null);
 
   const { data, error } = await supabase
     .from("experience_rounds")
@@ -45,9 +108,10 @@ export async function startNextRound(
       room_id: roomId,
       type,
       round_number: nextNumber,
+      round_type: nextType,
       status: "active",
     })
-    .select("id, round_number, status")
+    .select("id, round_number, round_type, status")
     .single();
 
   if (error) throw error;

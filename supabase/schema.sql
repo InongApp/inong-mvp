@@ -64,6 +64,7 @@ create table experience_rounds (
   room_id uuid not null references rooms(id) on delete cascade,
   type text not null check (type in ('know_me', 'bet_on_me')),
   round_number int not null,
+  round_type text check (round_type in ('discover', 'play', 'deepen', 'surprise', 'connection', 'memory')), -- null = legacy round predating round-type intelligence
   status text not null default 'active' check (status in ('active', 'complete')),
   started_at timestamptz not null default now(),
   completed_at timestamptz,

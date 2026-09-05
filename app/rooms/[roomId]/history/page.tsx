@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { getOverallStats, verdictFor } from "@/lib/roomStats";
+import { roundTypeInfo } from "@/lib/rounds";
 import CommentThread from "@/components/CommentThread";
 
 type HistoryEntry = {
@@ -19,6 +20,7 @@ type RoundGroup = {
   key: string;
   type: "know_me" | "bet_on_me";
   roundNumber: number | null; // null = legacy pre-round data
+  roundType: string | null;
   status: "active" | "complete" | null;
   entries: HistoryEntry[];
   discoveries: string[];
@@ -60,7 +62,7 @@ export default function HistoryPage() {
     const { data: experiences } = await supabase
       .from("experiences")
       .select(
-        "id, type, question, options, created_by, ai_matched, round_id, experience_rounds(round_number, status)"
+        "id, type, question, options, created_by, ai_matched, round_id, experience_rounds(round_number, round_type, status)"
       )
       .eq("room_id", params.roomId)
       .in("type", ["know_me", "bet_on_me"])
@@ -100,6 +102,7 @@ export default function HistoryPage() {
 
       const roundInfo: any = e.experience_rounds;
       const roundNumber = roundInfo?.round_number ?? null;
+      const roundType = roundInfo?.round_type ?? null;
       const status = roundInfo?.status ?? null;
       const key = `${e.type}-${roundNumber ?? "legacy"}`;
 
@@ -108,6 +111,7 @@ export default function HistoryPage() {
           key,
           type: e.type,
           roundNumber,
+          roundType,
           status,
           entries: [],
           discoveries: [],
@@ -191,7 +195,13 @@ export default function HistoryPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs uppercase tracking-wide text-mute">
                   {typeLabel[group.type]} —{" "}
-                  {group.roundNumber ? `Round ${group.roundNumber}` : "Earlier"}
+                  {group.roundNumber
+                    ? `Round ${group.roundNumber}${
+                        group.roundType
+                          ? ` (${roundTypeInfo(group.roundType as any)?.label ?? group.roundType})`
+                          : ""
+                      }`
+                    : "Earlier"}
                 </p>
                 <p className="text-xs text-mute">
                   {matches}/{total}

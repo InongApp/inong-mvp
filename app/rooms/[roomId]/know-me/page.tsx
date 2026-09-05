@@ -10,6 +10,7 @@ import {
   startNextRound,
   getRoundProgress,
   completeRoundIfFull,
+  roundTypeInfo,
   RoundRow,
 } from "@/lib/rounds";
 import { resolveMatch } from "@/lib/matchJudge";
@@ -220,6 +221,7 @@ export default function KnowMePage() {
             askerName: "you",
             subjectName: friendName,
             roomId,
+            roundType: activeRound.round_type,
           }),
         });
         const data = await res.json();
@@ -348,6 +350,7 @@ export default function KnowMePage() {
     return (
       <RoundRecap
         roundNumber={round.round_number}
+        typeLabel={roundTypeInfo(round.round_type)?.label}
         matches={recapProgress.matches}
         total={recapProgress.completed}
         friendName={friendName}
@@ -360,17 +363,24 @@ export default function KnowMePage() {
   }
 
   const roundLabel = round ? `Round ${round.round_number}` : "Round 1";
+  const typeInfo = round ? roundTypeInfo(round.round_type) : null;
   const currentMatched = matchedForId === experience?.id ? roundMatched : null;
 
   const scoreboard = (
-    <div className="mb-4 flex items-center justify-between rounded-card bg-surface px-4 py-2 text-xs text-mute">
-      <span>{roundLabel} — 5 questions each</span>
-      <button
-        onClick={() => router.push(`/rooms/${roomId}/history`)}
-        className="text-coral hover:underline"
-      >
-        History
-      </button>
+    <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
+      <div className="flex items-center justify-between">
+        <span>
+          {roundLabel}
+          {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 questions each
+        </span>
+        <button
+          onClick={() => router.push(`/rooms/${roomId}/history`)}
+          className="text-coral hover:underline"
+        >
+          History
+        </button>
+      </div>
+      {typeInfo && <p className="mt-1 text-mute">{typeInfo.description}</p>}
     </div>
   );
 
