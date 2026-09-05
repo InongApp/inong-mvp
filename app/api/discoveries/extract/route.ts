@@ -78,7 +78,15 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (insertErr) throw insertErr;
+    if (insertErr) {
+      // Unique violation = another concurrent call already inserted one for
+      // this experience first. That's fine, not an error — this is exactly
+      // what the constraint exists to make safe.
+      if ((insertErr as any).code === "23505") {
+        return NextResponse.json({ discovery: null, skipped: true });
+      }
+      throw insertErr;
+    }
 
     return NextResponse.json({ discovery: inserted });
   } catch (e: any) {

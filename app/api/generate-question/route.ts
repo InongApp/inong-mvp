@@ -5,7 +5,7 @@ const ROUND_TYPE_INSTRUCTIONS: Record<string, string> = {
   discover:
     "This is a DISCOVER round: aim for a dimension of this person that hasn't come up before — a genuinely new angle, not a variation on something already known.",
   play:
-    "This is a PLAY round: keep it light, quick, and a little competitive. Prefer multiple-choice. Fun over heavy.",
+    "This is a PLAY round: keep it light, quick, and a little competitive. Fun over heavy.",
   surprise:
     "This is a SURPRISE round: take a deliberately unexpected or quirky angle — a hypothetical, an unusual framing, something that makes them go 'wait, what?' in a good way.",
   connection:
@@ -14,8 +14,15 @@ const ROUND_TYPE_INSTRUCTIONS: Record<string, string> = {
 
 export async function POST(req: Request) {
   try {
-    const { type, usedQuestions, askerName, subjectName, roomId, roundType } =
-      await req.json();
+    const {
+      type,
+      usedQuestions,
+      askerName,
+      subjectName,
+      roomId,
+      roundType,
+      forceFormat, // "choice" | "open" — decided by the app, not left to the AI
+    } = await req.json();
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -28,8 +35,13 @@ export async function POST(req: Request) {
     const isKnowMe = type === "know_me";
 
     const systemPrompt = isKnowMe
-      ? `You write short, specific, emotionally real questions for a "Know Me" game between two close people (romantic partners, family, or close friends). The question is answered by the SUBJECT about themselves; the ASKER predicts what the subject will say. Questions must feel personal and deepen the relationship — never generic small talk, never something answerable with a shrug. Draw on real human topics: fears, values, memories, relationships, ambitions, regrets, joys, contradictions, formative experiences. Vary between multiple-choice (2-4 short options) and fully open-ended questions — favor open-ended more often, since real depth rarely fits in a multiple-choice box.`
-      : `You write short, specific "Bet on Me" prediction questions between two close people — the ASKER predicts what the SUBJECT will choose or do, often something current or near-term (today, this week, right now), not abstract. Keep it playful but never generic or shallow. Vary between multiple-choice (2-4 short options) and open-ended.`;
+      ? `You write short, specific, emotionally real questions for a "Know Me" game between two close people (romantic partners, family, or close friends). The question is answered by the SUBJECT about themselves; the ASKER predicts what the subject will say. Questions must feel personal and deepen the relationship — never generic small talk, never something answerable with a shrug. Draw on real human topics: fears, values, memories, relationships, ambitions, regrets, joys, contradictions, formative experiences. The question FORMAT (multiple-choice or open-ended) will be specified explicitly in the instructions below — follow that exactly, don't decide it yourself.`
+      : `You write short, specific "Bet on Me" prediction questions between two close people — the ASKER predicts what the SUBJECT will choose or do, often something current or near-term (today, this week, right now), not abstract. Keep it playful but never generic or shallow. The question FORMAT (multiple-choice or open-ended) will be specified explicitly below — follow that exactly.`;
+
+    const formatInstruction =
+      forceFormat === "open"
+        ? `\n\nFORMAT (required): write this as a fully OPEN-ENDED question. You MUST set "options" to null — do not invent multiple-choice options this time.`
+        : `\n\nFORMAT (required): write this as a MULTIPLE-CHOICE question with exactly 2-4 short, distinct options. You MUST provide "options" as an array — do not return null.`;
 
     // Deepen and Memory reference one SPECIFIC real discovery — this is the
     // actual "Because you said..." mechanic, not just generic memory-awareness.
@@ -75,11 +87,11 @@ export async function POST(req: Request) {
     const userPrompt = `Asker: ${askerName}. Subject (the person being asked about): ${subjectName}.
 
 Questions already used in this relationship (never repeat these or anything too similar):
-${usedList.length ? usedList.map((q: string) => `- ${q}`).join("\n") : "(none yet)"}${discoveriesContext}${roundTypeInstruction}
+${usedList.length ? usedList.map((q: string) => `- ${q}`).join("\n") : "(none yet)"}${discoveriesContext}${roundTypeInstruction}${formatInstruction}
 
 Write ONE new question. Respond with ONLY JSON, no other text, in exactly this shape:
 {"question": "...", "options": ["...", "..."]}
-If the question is better as an open answer instead of multiple choice, use:
+or, only if instructed to write an open answer:
 {"question": "...", "options": null}`;
 
     const response = await fetch(

@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const systemPrompt = `You judge whether two free-text answers to the same question count as a MATCH for a relationship game. Treat differences in capitalization, spacing, punctuation, added or missing words, or number formatting (e.g. "57" vs "57 years old") as the SAME answer if the core meaning matches. Only mark them as NOT matching if the substantive content is actually different. Respond with ONLY JSON, no other text: {"matched": true} or {"matched": false}.`;
+    const systemPrompt = `You judge whether two free-text answers to the same question count as a MATCH for a relationship-deepening game. Be GENEROUS: treat differences in capitalization, spacing, punctuation, wording, sentence structure, added or missing detail, or number formatting as the SAME answer whenever the core meaning overlaps substantially — the two answers do not need to be worded anywhere near identically. The goal of this game is to celebrate connection, not penalize different phrasing of the same idea. When genuinely uncertain, lean toward MATCH. Only mark them as NOT matching when the substantive meaning is clearly different — a different specific choice, an opposite sentiment, or an unrelated topic. Respond with ONLY JSON, no other text: {"matched": true} or {"matched": false}.`;
 
     const userPrompt = `Question: ${question}
 Answer A: ${selfAnswer}

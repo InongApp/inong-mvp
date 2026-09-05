@@ -148,18 +148,20 @@ export default function BetOnMePage() {
         setRoundMatched(matched);
         setMatchedForId(last.id);
 
-        fetch("/api/discoveries/extract", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomId,
-            experienceId: last.id,
-            profileId:
-              last.created_by === userId ? theirs?.profile_id ?? friendId : userId,
-            question: last.question,
-            answer: self,
-          }),
-        }).catch(() => {});
+        const iAmSubject = last.created_by !== userId;
+        if (iAmSubject) {
+          fetch("/api/discoveries/extract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId,
+              experienceId: last.id,
+              profileId: userId,
+              question: last.question,
+              answer: self,
+            }),
+          }).catch(() => {});
+        }
       }
     }
 
@@ -200,6 +202,17 @@ export default function BetOnMePage() {
         .eq("type", "bet_on_me");
       const used = (existing ?? []).map((e: any) => e.question);
 
+      const { count: countInRound } = await supabase
+        .from("experiences")
+        .select("id", { count: "exact", head: true })
+        .eq("round_id", activeRound.id);
+      const forceFormat: "choice" | "open" =
+        activeRound.round_type === "play"
+          ? "choice"
+          : (countInRound ?? 0) % 2 === 0
+          ? "choice"
+          : "open";
+
       let question: string | null = null;
       let options: string[] | null = null;
 
@@ -214,6 +227,7 @@ export default function BetOnMePage() {
             subjectName: friendName,
             roomId,
             roundType: activeRound.round_type,
+            forceFormat,
           }),
         });
         const data = await res.json();
@@ -469,6 +483,14 @@ export default function BetOnMePage() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-center">
+            {typeInfo && (
+              <div className="mb-4 rounded-card bg-skyblue/10 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-skyblue">
+                  {typeInfo.label} round
+                </p>
+                <p className="mt-1 text-sm text-paper">{typeInfo.description}</p>
+              </div>
+            )}
             <p className="text-sm uppercase tracking-wide text-mute">
               Your turn
             </p>

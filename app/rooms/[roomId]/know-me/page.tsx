@@ -156,18 +156,23 @@ export default function KnowMePage() {
         setRoundMatched(matched);
         setMatchedForId(last.id);
 
-        // Fire-and-forget: extract a discovery if one genuinely exists here
-        fetch("/api/discoveries/extract", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            roomId,
-            experienceId: last.id,
-            profileId: last.created_by === userId ? theirs?.profile_id ?? friendId : userId,
-            question: last.question,
-            answer: self,
-          }),
-        }).catch(() => {});
+        // Only the subject's own browser triggers extraction — avoids both
+        // people's clients firing the same call. The DB's unique constraint
+        // on discoveries.source_experience_id is still the real safety net.
+        const iAmSubject = last.created_by !== userId;
+        if (iAmSubject) {
+          fetch("/api/discoveries/extract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              roomId,
+              experienceId: last.id,
+              profileId: userId,
+              question: last.question,
+              answer: self,
+            }),
+          }).catch(() => {});
+        }
       }
     }
 
@@ -208,6 +213,20 @@ export default function KnowMePage() {
         .eq("type", "know_me");
       const used = (existing ?? []).map((e: any) => e.question);
 
+      // Deterministic format alternation — Play rounds always favor quick
+      // multiple-choice; otherwise alternate strictly within the round so
+      // every question doesn't default to the same essay-style format.
+      const { count: countInRound } = await supabase
+        .from("experiences")
+        .select("id", { count: "exact", head: true })
+        .eq("round_id", activeRound.id);
+      const forceFormat: "choice" | "open" =
+        activeRound.round_type === "play"
+          ? "choice"
+          : (countInRound ?? 0) % 2 === 0
+          ? "choice"
+          : "open";
+
       let question: string | null = null;
       let options: string[] | null = null;
 
@@ -222,6 +241,7 @@ export default function KnowMePage() {
             subjectName: friendName,
             roomId,
             roundType: activeRound.round_type,
+            forceFormat,
           }),
         });
         const data = await res.json();
@@ -478,6 +498,14 @@ export default function KnowMePage() {
           </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center text-center">
+            {typeInfo && (
+              <div className="mb-4 rounded-card bg-coral/10 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-coral">
+                  {typeInfo.label} round
+                </p>
+                <p className="mt-1 text-sm text-paper">{typeInfo.description}</p>
+              </div>
+            )}
             <p className="text-sm uppercase tracking-wide text-mute">
               Your turn
             </p>

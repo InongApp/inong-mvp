@@ -89,7 +89,7 @@ create table experiences (
 create table discoveries (
   id uuid primary key default uuid_generate_v4(),
   room_id uuid not null references rooms(id) on delete cascade,
-  source_experience_id uuid not null references experiences(id) on delete cascade,
+  source_experience_id uuid not null references experiences(id) on delete cascade unique, -- one discovery per round, enforced at the DB level
   profile_id uuid not null references profiles(id) on delete cascade, -- who the discovery is about
   summary text not null,
   category text,
