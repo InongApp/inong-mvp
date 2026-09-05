@@ -120,6 +120,12 @@ export default function HomePage() {
         >
           Get started
         </Link>
+        <Link
+          href="/about"
+          className="mt-3 block text-center text-sm text-mute hover:text-paper"
+        >
+          About INONG™ & how to play
+        </Link>
       </div>
     );
   }
@@ -143,6 +149,12 @@ export default function HomePage() {
         >
           + New room
         </button>
+        <Link
+          href="/about"
+          className="mt-3 block text-center text-sm text-mute hover:text-paper"
+        >
+          About INONG™ & how to play
+        </Link>
       </div>
     );
   }
@@ -170,6 +182,12 @@ export default function HomePage() {
       >
         + New room
       </button>
+      <Link
+        href="/about"
+        className="mt-3 block text-center text-sm text-mute hover:text-paper"
+      >
+        About INONG™ & how to play
+      </Link>
     </div>
   );
 }
