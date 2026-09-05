@@ -5,11 +5,18 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { questionsByType } from "@/lib/questions";
 import { useRoomSession } from "@/lib/useRoomSession";
-import { getDayProgress, verdictFor, DAY_QUESTION_LIMIT, DayProgress } from "@/lib/roomStats";
+import {
+  getLatestRound,
+  startNextRound,
+  getRoundProgress,
+  completeRoundIfFull,
+  RoundRow,
+} from "@/lib/rounds";
 import { resolveMatch } from "@/lib/matchJudge";
 import { notify } from "@/lib/notifyClient";
 import RevealCard from "@/components/RevealCard";
 import CommentThread from "@/components/CommentThread";
+import RoundRecap from "@/components/RoundRecap";
 
 type Experience = {
   id: string;
@@ -19,13 +26,25 @@ type Experience = {
   ai_matched: boolean | null;
 };
 
+type Discovery = { id: string; summary: string };
+
 // Roles: the ASKER (created_by) predicts what the other person will say.
 // The other member is the SUBJECT — they answer for themselves. Being the
 // subject one round earns you the next turn to ask.
+//
+// Rounds: 5 turns per player (10 total) is the finite competitive unit —
+// deliberate, not a limitation. When it fills, the round closes and shows
+// a Recap. The Journey (all rounds over time) stays open-ended.
 
 export default function KnowMePage() {
   const router = useRouter();
   const { userId, roomId, friendId, friendName, ready } = useRoomSession();
+
+  const [round, setRound] = useState<RoundRow | null>(null);
+  const [recapDiscoveries, setRecapDiscoveries] = useState<Discovery[]>([]);
+  const [recapProgress, setRecapProgress] = useState({ completed: 0, matches: 0 });
+  const [startingNext, setStartingNext] = useState(false);
+
   const [experience, setExperience] = useState<Experience | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [selfAnswer, setSelfAnswer] = useState<string | null>(null);
@@ -34,7 +53,6 @@ export default function KnowMePage() {
   );
   const [roundMatched, setRoundMatched] = useState<boolean | null>(null);
   const [matchedForId, setMatchedForId] = useState<string | null>(null);
-  const [dayProgress, setDayProgress] = useState<DayProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [asking, setAsking] = useState(false);
   const [askMode, setAskMode] = useState<"custom" | null>(null);
@@ -55,11 +73,47 @@ export default function KnowMePage() {
   async function load() {
     if (!roomId || !userId) return;
 
+    const latest = await getLatestRound(roomId, "know_me");
+
+    if (latest && latest.status === "complete") {
+      setRound(latest);
+      const progress = await getRoundProgress(latest.id);
+      setRecapProgress(progress);
+
+      const { data: exps } = await supabase
+        .from("experiences")
+        .select("id")
+        .eq("round_id", latest.id);
+      const expIds = (exps ?? []).map((e: any) => e.id);
+      if (expIds.length > 0) {
+        const { data: discoveries } = await supabase
+          .from("discoveries")
+          .select("id, summary")
+          .in("source_experience_id", expIds);
+        setRecapDiscoveries((discoveries as Discovery[]) ?? []);
+      } else {
+        setRecapDiscoveries([]);
+      }
+
+      setLoading(false);
+      return;
+    }
+
+    setRound(latest);
+
+    if (!latest) {
+      setExperience(null);
+      setIsComplete(false);
+      setSelfAnswer(null);
+      setPredictionAnswer(null);
+      setLoading(false);
+      return;
+    }
+
     const { data: experiences } = await supabase
       .from("experiences")
       .select("id, question, options, created_by, ai_matched")
-      .eq("room_id", roomId)
-      .eq("type", "know_me")
+      .eq("round_id", latest.id)
       .order("created_at", { ascending: true });
 
     const last = (experiences ?? [])[
@@ -100,13 +154,43 @@ export default function KnowMePage() {
         const matched = await resolveMatch(last, self, prediction);
         setRoundMatched(matched);
         setMatchedForId(last.id);
+
+        // Fire-and-forget: extract a discovery if one genuinely exists here
+        fetch("/api/discoveries/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId,
+            experienceId: last.id,
+            profileId: last.created_by === userId ? theirs?.profile_id ?? friendId : userId,
+            question: last.question,
+            answer: self,
+          }),
+        }).catch(() => {});
       }
     }
 
-    const progress = await getDayProgress(roomId, "know_me");
-    setDayProgress(progress);
-
     setLoading(false);
+  }
+
+  async function handleStartNextRound() {
+    if (!roomId) return;
+    setStartingNext(true);
+    try {
+      await startNextRound(roomId, "know_me");
+      await load();
+    } catch (e: any) {
+      setError(e.message ?? "Couldn't start the next round.");
+    } finally {
+      setStartingNext(false);
+    }
+  }
+
+  async function ensureActiveRound(): Promise<RoundRow> {
+    if (round && round.status === "active") return round;
+    const created = await startNextRound(roomId!, "know_me");
+    setRound(created);
+    return created;
   }
 
   async function createFromBank() {
@@ -114,6 +198,8 @@ export default function KnowMePage() {
     setError(null);
     setAsking(true);
     try {
+      const activeRound = await ensureActiveRound();
+
       const { data: existing } = await supabase
         .from("experiences")
         .select("question")
@@ -133,6 +219,7 @@ export default function KnowMePage() {
             usedQuestions: used,
             askerName: "you",
             subjectName: friendName,
+            roomId,
           }),
         });
         const data = await res.json();
@@ -159,6 +246,7 @@ export default function KnowMePage() {
 
       const { error: insertErr } = await supabase.from("experiences").insert({
         room_id: roomId,
+        round_id: activeRound.id,
         type: "know_me",
         question,
         options,
@@ -185,29 +273,35 @@ export default function KnowMePage() {
     if (!roomId || !userId) return;
     if (!customQuestion.trim()) return setError("Write a question first.");
     setError(null);
-    const { error: insertErr } = await supabase.from("experiences").insert({
-      room_id: roomId,
-      type: "know_me",
-      question: customQuestion.trim(),
-      options: customOptions.length >= 2 ? customOptions : null,
-      created_by: userId,
-    });
-    if (insertErr) {
-      setError(insertErr.message);
-      return;
+    try {
+      const activeRound = await ensureActiveRound();
+      const { error: insertErr } = await supabase.from("experiences").insert({
+        room_id: roomId,
+        round_id: activeRound.id,
+        type: "know_me",
+        question: customQuestion.trim(),
+        options: customOptions.length >= 2 ? customOptions : null,
+        created_by: userId,
+      });
+      if (insertErr) {
+        setError(insertErr.message);
+        return;
+      }
+      if (friendId) {
+        notify(
+          friendId,
+          "New question in Know Me 🧠",
+          customQuestion.trim(),
+          `/rooms/${roomId}/know-me`
+        );
+      }
+      setCustomQuestion("");
+      setCustomOptions([]);
+      setAskMode(null);
+      load();
+    } catch (e: any) {
+      setError(e.message ?? "Something went wrong.");
     }
-    if (friendId) {
-      notify(
-        friendId,
-        "New question in Know Me 🧠",
-        customQuestion.trim(),
-        `/rooms/${roomId}/know-me`
-      );
-    }
-    setCustomQuestion("");
-    setCustomOptions([]);
-    setAskMode(null);
-    load();
   }
 
   function addOption() {
@@ -217,7 +311,7 @@ export default function KnowMePage() {
   }
 
   async function submitAnswer(option: string) {
-    if (!experience || !userId) return;
+    if (!experience || !userId || !round) return;
     const isSubject = experience.created_by !== userId;
     const otherAlreadyAnswered = isSubject
       ? !!predictionAnswer
@@ -236,11 +330,12 @@ export default function KnowMePage() {
         `/rooms/${roomId}/know-me`
       );
     }
+    await completeRoundIfFull(round.id);
     setFreeText("");
     load();
   }
 
-  if (!ready || loading || !dayProgress) {
+  if (!ready || loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-mute">
         Loading your Inong...
@@ -248,12 +343,28 @@ export default function KnowMePage() {
     );
   }
 
+  // ---------- Round complete: the deliberate hanger ----------
+  if (round && round.status === "complete") {
+    return (
+      <RoundRecap
+        roundNumber={round.round_number}
+        matches={recapProgress.matches}
+        total={recapProgress.completed}
+        friendName={friendName}
+        discoveries={recapDiscoveries}
+        onStartNext={handleStartNextRound}
+        starting={startingNext}
+        accent="coral"
+      />
+    );
+  }
+
+  const roundLabel = round ? `Round ${round.round_number}` : "Round 1";
+  const currentMatched = matchedForId === experience?.id ? roundMatched : null;
+
   const scoreboard = (
     <div className="mb-4 flex items-center justify-between rounded-card bg-surface px-4 py-2 text-xs text-mute">
-      <span>
-        Today: {dayProgress.completedToday}/{DAY_QUESTION_LIMIT} ·{" "}
-        {dayProgress.matchesToday} matched
-      </span>
+      <span>{roundLabel} — 5 questions each</span>
       <button
         onClick={() => router.push(`/rooms/${roomId}/history`)}
         className="text-coral hover:underline"
@@ -262,57 +373,6 @@ export default function KnowMePage() {
       </button>
     </div>
   );
-
-  const currentMatched = matchedForId === experience?.id ? roundMatched : null;
-
-  if (dayProgress.capped) {
-    return (
-      <div className="flex flex-1 flex-col">
-        {scoreboard}
-        {isComplete && experience && currentMatched !== null && (
-          <>
-            <RevealCard
-              matched={currentMatched}
-              yourAnswer={
-                (experience.created_by === userId
-                  ? predictionAnswer
-                  : selfAnswer)!
-              }
-              theirGuess={
-                (experience.created_by === userId
-                  ? selfAnswer
-                  : predictionAnswer)!
-              }
-              friendName={friendName}
-            />
-            <CommentThread
-              experienceId={experience.id}
-              userId={userId!}
-              friendName={friendName}
-            />
-          </>
-        )}
-        <div className="mt-6 flex flex-1 flex-col items-center justify-center text-center">
-          <p className="text-sm uppercase tracking-wide text-mute">
-            Today&rsquo;s session complete
-          </p>
-          <p className="font-serif mt-3 text-2xl font-semibold text-coral">
-            {dayProgress.matchesToday}/{DAY_QUESTION_LIMIT} matched
-          </p>
-          <p className="mt-3 max-w-xs text-mute">
-            {verdictFor(dayProgress.matchesToday, DAY_QUESTION_LIMIT)}
-          </p>
-          <p className="mt-6 text-sm text-mute">Come back tomorrow for more.</p>
-          <button
-            onClick={() => router.push(`/rooms/${roomId}/history`)}
-            className="mt-6 rounded-full border border-mute px-6 py-3 text-sm text-paper hover:border-paper"
-          >
-            See full history
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const isMyTurn =
     !experience || (isComplete && experience.created_by !== userId);

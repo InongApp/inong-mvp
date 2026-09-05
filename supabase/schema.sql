@@ -4,8 +4,12 @@
 
 drop function if exists accept_invite(text);
 drop function if exists get_invite_preview(text);
+drop table if exists discoveries cascade;
 drop table if exists responses cascade;
+drop table if exists experience_comments cascade;
 drop table if exists experiences cascade;
+drop table if exists experience_rounds cascade;
+drop table if exists push_subscriptions cascade;
 drop table if exists room_invites cascade;
 drop table if exists room_members cascade;
 drop table if exists rooms cascade;
@@ -51,14 +55,44 @@ create table room_invites (
   created_at timestamptz not null default now()
 );
 
+-- A Round is the finite competitive unit: 5 alternating turns per player
+-- (10 total) for a given experience type. Finite by design — the round
+-- ends deliberately (a "hanger"), while the Journey (all rounds over time)
+-- stays open-ended.
+create table experience_rounds (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  type text not null check (type in ('know_me', 'bet_on_me')),
+  round_number int not null,
+  status text not null default 'active' check (status in ('active', 'complete')),
+  started_at timestamptz not null default now(),
+  completed_at timestamptz,
+  unique (room_id, type, round_number)
+);
+
 create table experiences (
   id uuid primary key default uuid_generate_v4(),
   room_id uuid not null references rooms(id) on delete cascade,
+  round_id uuid references experience_rounds(id) on delete set null, -- null = legacy pre-round data
   type text not null check (type in ('know_me', 'bet_on_me')),
   question text not null,
   options jsonb, -- nullable: null means an open-ended (free-text) custom question
   created_by uuid not null references profiles(id),
   ai_matched boolean, -- cached AI judgment for free-text rounds; null = not yet judged
+  created_at timestamptz not null default now()
+);
+
+-- A Discovery is a curated, meaningful insight extracted from one Q&A —
+-- distinct from the raw interaction log. Always tagged is_ai_inferred so
+-- inference is never silently presented as confirmed fact.
+create table discoveries (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  source_experience_id uuid not null references experiences(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade, -- who the discovery is about
+  summary text not null,
+  category text,
+  is_ai_inferred boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -103,6 +137,8 @@ alter table rooms enable row level security;
 alter table room_members enable row level security;
 alter table room_invites enable row level security;
 alter table experiences enable row level security;
+alter table experience_rounds enable row level security;
+alter table discoveries enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -189,6 +225,30 @@ create policy "experiences: members create" on experiences
 create policy "experiences: members update" on experiences
   for update using (
     exists (select 1 from room_members m where m.room_id = experiences.room_id and m.profile_id = auth.uid())
+  );
+
+-- EXPERIENCE_ROUNDS: members read/create/update their own room's rounds
+create policy "experience_rounds: members read" on experience_rounds
+  for select using (
+    exists (select 1 from room_members m where m.room_id = experience_rounds.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "experience_rounds: members create" on experience_rounds
+  for insert with check (
+    exists (select 1 from room_members m where m.room_id = experience_rounds.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "experience_rounds: members update" on experience_rounds
+  for update using (
+    exists (select 1 from room_members m where m.room_id = experience_rounds.room_id and m.profile_id = auth.uid())
+  );
+
+-- DISCOVERIES: members can read; writes happen server-side via the service
+-- role in /api/discoveries/extract, so no insert policy is needed for the
+-- anon/authenticated roles.
+create policy "discoveries: members read" on discoveries
+  for select using (
+    exists (select 1 from room_members m where m.room_id = discoveries.room_id and m.profile_id = auth.uid())
   );
 
 create policy "responses: room members read" on responses

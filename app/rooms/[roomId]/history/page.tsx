@@ -3,17 +3,25 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { getOverallStats, verdictFor, DAY_QUESTION_LIMIT } from "@/lib/roomStats";
+import { getOverallStats, verdictFor } from "@/lib/roomStats";
 import CommentThread from "@/components/CommentThread";
 
 type HistoryEntry = {
   id: string;
   type: "know_me" | "bet_on_me";
   question: string;
-  createdAt: string;
   selfAnswer: string | null;
   predictionAnswer: string | null;
   matched: boolean;
+};
+
+type RoundGroup = {
+  key: string;
+  type: "know_me" | "bet_on_me";
+  roundNumber: number | null; // null = legacy pre-round data
+  status: "active" | "complete" | null;
+  entries: HistoryEntry[];
+  discoveries: string[];
 };
 
 export default function HistoryPage() {
@@ -21,7 +29,7 @@ export default function HistoryPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [friendName, setFriendName] = useState("your Inong");
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [groups, setGroups] = useState<RoundGroup[]>([]);
   const [overall, setOverall] = useState({ totalCompleted: 0, totalMatches: 0 });
   const [openId, setOpenId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,24 +59,36 @@ export default function HistoryPage() {
 
     const { data: experiences } = await supabase
       .from("experiences")
-      .select("id, type, question, options, created_by, ai_matched, created_at")
+      .select(
+        "id, type, question, options, created_by, ai_matched, round_id, experience_rounds(round_number, status)"
+      )
       .eq("room_id", params.roomId)
       .in("type", ["know_me", "bet_on_me"])
       .order("created_at", { ascending: false });
 
     const ids = (experiences ?? []).map((e: any) => e.id);
-    const { data: allResponses } =
+    const [{ data: allResponses }, { data: allDiscoveries }] = await Promise.all([
       ids.length > 0
-        ? await supabase
+        ? supabase
             .from("responses")
             .select("experience_id, profile_id, answer, is_prediction")
             .in("experience_id", ids)
-        : { data: [] };
+        : Promise.resolve({ data: [] } as any),
+      ids.length > 0
+        ? supabase
+            .from("discoveries")
+            .select("source_experience_id, summary")
+            .in("source_experience_id", ids)
+        : Promise.resolve({ data: [] } as any),
+    ]);
 
-    const list: HistoryEntry[] = [];
+    const groupMap = new Map<string, RoundGroup>();
+
     for (const e of experiences ?? []) {
-      const rs = (allResponses ?? []).filter((r: any) => r.experience_id === e.id);
-      if (rs.length < 2) continue; // only show completed rounds
+      const rs = (allResponses ?? []).filter(
+        (r: any) => r.experience_id === e.id
+      );
+      if (rs.length < 2) continue; // only show completed rounds of Q&A
       const self = rs.find((r: any) => !r.is_prediction);
       const pred = rs.find((r: any) => r.is_prediction);
       if (!self || !pred) continue;
@@ -78,17 +98,42 @@ export default function HistoryPage() {
         ? self.answer === pred.answer
         : e.ai_matched === true;
 
-      list.push({
+      const roundInfo: any = e.experience_rounds;
+      const roundNumber = roundInfo?.round_number ?? null;
+      const status = roundInfo?.status ?? null;
+      const key = `${e.type}-${roundNumber ?? "legacy"}`;
+
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          key,
+          type: e.type,
+          roundNumber,
+          status,
+          entries: [],
+          discoveries: [],
+        });
+      }
+      const group = groupMap.get(key)!;
+      group.entries.push({
         id: e.id,
         type: e.type,
         question: e.question,
-        createdAt: e.created_at,
         selfAnswer: self.answer,
         predictionAnswer: pred.answer,
         matched,
       });
+
+      const discovery = (allDiscoveries ?? []).find(
+        (d: any) => d.source_experience_id === e.id
+      );
+      if (discovery) group.discoveries.push(discovery.summary);
     }
-    setEntries(list);
+
+    const groupList = Array.from(groupMap.values()).sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return (b.roundNumber ?? 0) - (a.roundNumber ?? 0);
+    });
+    setGroups(groupList);
 
     const stats = await getOverallStats(params.roomId);
     setOverall(stats);
@@ -104,17 +149,10 @@ export default function HistoryPage() {
     );
   }
 
-  // Group by calendar day
-  const groups: { day: string; entries: HistoryEntry[] }[] = [];
-  for (const entry of entries) {
-    const day = new Date(entry.createdAt).toDateString();
-    let group = groups.find((g) => g.day === day);
-    if (!group) {
-      group = { day, entries: [] };
-      groups.push(group);
-    }
-    group.entries.push(entry);
-  }
+  const typeLabel: Record<string, string> = {
+    know_me: "Know Me",
+    bet_on_me: "Bet on Me",
+  };
 
   return (
     <div className="flex flex-1 flex-col">
@@ -125,7 +163,9 @@ export default function HistoryPage() {
         ← Back
       </button>
 
-      <h1 className="font-serif mt-4 text-2xl font-semibold">History & Score</h1>
+      <h1 className="font-serif mt-4 text-2xl font-semibold">
+        Your Journey
+      </h1>
 
       <div className="mt-4 rounded-card bg-surface px-5 py-4">
         <p className="text-xs uppercase tracking-wide text-mute">All-time</p>
@@ -134,34 +174,44 @@ export default function HistoryPage() {
         </p>
       </div>
 
-      {entries.length === 0 && (
+      {groups.length === 0 && (
         <p className="mt-8 text-center text-mute">
-          No completed questions yet — answer your first one to start your
-          history.
+          No completed rounds yet — answer your first question to start your
+          journey.
         </p>
       )}
 
       <div className="mt-6 flex-1 space-y-6">
         {groups.map((group) => {
-          const dayMatches = group.entries.filter((e) => e.matched).length;
-          const dayTotal = group.entries.length;
-          const isFullDay = dayTotal >= DAY_QUESTION_LIMIT;
+          const matches = group.entries.filter((e) => e.matched).length;
+          const total = group.entries.length;
 
           return (
-            <div key={group.day}>
+            <div key={group.key}>
               <div className="flex items-center justify-between">
                 <p className="text-xs uppercase tracking-wide text-mute">
-                  {group.day}
+                  {typeLabel[group.type]} —{" "}
+                  {group.roundNumber ? `Round ${group.roundNumber}` : "Earlier"}
                 </p>
                 <p className="text-xs text-mute">
-                  {dayMatches}/{dayTotal}
-                  {isFullDay ? " · Day complete" : ""}
+                  {matches}/{total}
+                  {group.status === "complete" ? " · complete" : ""}
                 </p>
               </div>
-              {isFullDay && (
+              {group.status === "complete" && (
                 <p className="mt-1 text-sm text-coral">
-                  {verdictFor(dayMatches, dayTotal)}
+                  {verdictFor(matches, total)}
                 </p>
+              )}
+
+              {group.discoveries.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {group.discoveries.map((d, i) => (
+                    <p key={i} className="text-xs text-skyblue">
+                      ✦ {d}
+                    </p>
+                  ))}
+                </div>
               )}
 
               <div className="mt-3 space-y-2">
@@ -180,7 +230,6 @@ export default function HistoryPage() {
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-mute">
-                        {entry.type === "know_me" ? "Know Me" : "Bet on Me"} ·{" "}
                         {entry.selfAnswer} vs {entry.predictionAnswer}
                       </p>
                     </button>
