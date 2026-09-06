@@ -62,7 +62,7 @@ create table room_invites (
 create table experience_rounds (
   id uuid primary key default uuid_generate_v4(),
   room_id uuid not null references rooms(id) on delete cascade,
-  type text not null check (type in ('know_me', 'bet_on_me')),
+  type text not null check (type in ('know_me', 'bet_on_me', 'visuals_in_words')),
   round_number int not null,
   round_type text check (round_type in ('discover', 'play', 'deepen', 'surprise', 'connection', 'memory')), -- null = legacy round predating round-type intelligence
   status text not null default 'active' check (status in ('active', 'complete')),
@@ -75,7 +75,7 @@ create table experiences (
   id uuid primary key default uuid_generate_v4(),
   room_id uuid not null references rooms(id) on delete cascade,
   round_id uuid references experience_rounds(id) on delete set null, -- null = legacy pre-round data
-  type text not null check (type in ('know_me', 'bet_on_me')),
+  type text not null check (type in ('know_me', 'bet_on_me', 'visuals_in_words')),
   question text not null,
   options jsonb, -- nullable: null means an open-ended (free-text) custom question
   created_by uuid not null references profiles(id),

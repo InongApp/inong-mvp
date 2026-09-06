@@ -239,6 +239,12 @@ export default function RoomPage() {
           >
             🕰️ Our Memories
           </button>
+          <button
+            onClick={() => router.push(`/rooms/${room.id}/visuals-in-words`)}
+            className="w-full rounded-full border border-mute py-4 font-medium text-paper transition hover:border-paper"
+          >
+            🎨 Visuals in Words
+          </button>
         </div>
       )}
 

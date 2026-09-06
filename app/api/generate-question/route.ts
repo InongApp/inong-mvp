@@ -33,22 +33,26 @@ export async function POST(req: Request) {
     }
 
     const isKnowMe = type === "know_me";
+    const isVisuals = type === "visuals_in_words";
 
-    const systemPrompt = isKnowMe
+    const systemPrompt = isVisuals
+      ? `You write short, evocative prompts for "Visuals in Words" — a game where two close people each independently describe what they picture, in their own words, for the SAME evocative prompt. There is no right answer and nobody predicts anybody — the fun is discovering how differently (or similarly) two people imagine the same thing. Prompts should be abstract or metaphorical enough that two people would picture genuinely different things: a place, a feeling, a symbol, a "what does X look like to you" framing. Never ask for a fact or a preference (that's Know Me's job) — ask for an IMAGE, a SCENE, or a FEELING rendered in words. Always open-ended, never multiple-choice.`
+      : isKnowMe
       ? `You write short, specific, emotionally real questions for a "Know Me" game between two close people (romantic partners, family, or close friends). The question is answered by the SUBJECT about themselves; the ASKER predicts what the subject will say. Questions must feel personal and deepen the relationship — never generic small talk, never something answerable with a shrug. Draw on real human topics: fears, values, memories, relationships, ambitions, regrets, joys, contradictions, formative experiences. The question FORMAT (multiple-choice or open-ended) will be specified explicitly in the instructions below — follow that exactly, don't decide it yourself.`
       : `You write short, specific "Bet on Me" prediction questions between two close people — the ASKER predicts what the SUBJECT will choose or do, often something current or near-term (today, this week, right now), not abstract. Keep it playful but never generic or shallow. The question FORMAT (multiple-choice or open-ended) will be specified explicitly below — follow that exactly.`;
 
-    const formatInstruction =
-      forceFormat === "open"
-        ? `\n\nFORMAT (required): write this as a fully OPEN-ENDED question. You MUST set "options" to null — do not invent multiple-choice options this time.`
-        : `\n\nFORMAT (required): write this as a MULTIPLE-CHOICE question with exactly 2-4 short, distinct options. You MUST provide "options" as an array — do not return null.`;
+    const formatInstruction = isVisuals
+      ? `\n\nFORMAT (required): this is always OPEN-ENDED. Set "options" to null.`
+      : forceFormat === "open"
+      ? `\n\nFORMAT (required): write this as a fully OPEN-ENDED question. You MUST set "options" to null — do not invent multiple-choice options this time.`
+      : `\n\nFORMAT (required): write this as a MULTIPLE-CHOICE question with exactly 2-4 short, distinct options. You MUST provide "options" as an array — do not return null.`;
 
     // Deepen and Memory reference one SPECIFIC real discovery — this is the
     // actual "Because you said..." mechanic, not just generic memory-awareness.
     let followUpInstruction = "";
     let discoveriesContext = "";
 
-    if (roomId && (roundType === "deepen" || roundType === "memory")) {
+    if (roomId && !isVisuals && (roundType === "deepen" || roundType === "memory")) {
       const orderAscending = roundType === "memory"; // memory reaches further back; deepen uses the most recent
       const { data: discoveries } = await supabaseAdmin
         .from("discoveries")
@@ -64,6 +68,19 @@ export async function POST(req: Request) {
             ? `\n\nThis is a DEEPEN round. Here is something real that was just discovered about ${subjectName}: "${chosen}". Write a question that goes directly deeper on THIS specific thing — a natural "because you said..." follow-up, not a generic new topic.`
             : `\n\nThis is a MEMORY round. Here is something discovered earlier in this relationship's journey about ${subjectName}: "${chosen}". Write a question that revisits it — checking in, asking what's changed, or exploring a related memory.`;
       }
+    } else if (roomId && isVisuals && (roundType === "deepen" || roundType === "memory")) {
+      const orderAscending = roundType === "memory";
+      const { data: discoveries } = await supabaseAdmin
+        .from("discoveries")
+        .select("summary")
+        .eq("room_id", roomId)
+        .order("created_at", { ascending: orderAscending })
+        .limit(1);
+
+      const chosen = discoveries?.[0]?.summary;
+      if (chosen) {
+        followUpInstruction = `\n\nSomething real about this relationship: "${chosen}". Turn this into an evocative visual prompt — ask them to describe what that looks or feels like as an image or scene, not to restate the fact itself.`;
+      }
     } else if (roomId) {
       const { data: discoveries } = await supabaseAdmin
         .from("discoveries")
@@ -72,11 +89,15 @@ export async function POST(req: Request) {
         .order("created_at", { ascending: false })
         .limit(10);
       if (discoveries && discoveries.length > 0) {
-        discoveriesContext = `\n\nWhat's already been discovered about ${subjectName} in past rounds:\n${discoveries
-          .map((d: any) => `- ${d.summary}`)
-          .join(
-            "\n"
-          )}\nUse this to avoid repeating known ground.`;
+        discoveriesContext = isVisuals
+          ? `\n\nWhat's already known about this relationship:\n${discoveries
+              .map((d: any) => `- ${d.summary}`)
+              .join("\n")}\nFeel free to draw on this for inspiration, but keep the prompt about an image or feeling, not a restated fact.`
+          : `\n\nWhat's already been discovered about ${subjectName} in past rounds:\n${discoveries
+              .map((d: any) => `- ${d.summary}`)
+              .join(
+                "\n"
+              )}\nUse this to avoid repeating known ground.`;
       }
     }
 

@@ -11,7 +11,7 @@ const EXPERIENCES: {
 }[] = [
   { name: "Know Your INONG™", tagline: "How well do you know me? Predict what I'll choose.", status: "live" },
   { name: "Bet on Me", tagline: "How confident are you in me? Place a bet, then reveal.", status: "live" },
-  { name: "INONG™ Visuals in Words", tagline: "What am I looking at?", status: "soon" },
+  { name: "INONG™ Visuals in Words", tagline: "What am I looking at? (text version now — real images with Premium, coming soon)", status: "live" },
   { name: "Our INONG™ Thing", tagline: "Our jokes, our lingo, our stories.", status: "soon" },
   { name: "Surprise Me", tagline: "Our random challenges.", status: "soon" },
   { name: "INONG™ Court", tagline: "Let the friends decide.", status: "soon" },
