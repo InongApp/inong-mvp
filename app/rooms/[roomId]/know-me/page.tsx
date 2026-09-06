@@ -518,7 +518,7 @@ export default function KnowMePage() {
                 disabled={asking}
                 className="w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
               >
-                {asking ? "Thinking of one..." : "Surprise me"}
+                {asking ? "Thinking of one..." : "Play"}
               </button>
               <button
                 onClick={() => setAskMode("custom")}

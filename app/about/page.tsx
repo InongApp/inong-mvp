@@ -15,7 +15,7 @@ const EXPERIENCES: {
   { name: "Our INONG™ Thing", tagline: "Our jokes, our lingo, our stories.", status: "soon" },
   { name: "Surprise Me", tagline: "Our random challenges.", status: "soon" },
   { name: "INONG™ Court", tagline: "Let the friends decide.", status: "soon" },
-  { name: "Our INONG™ Memories", tagline: "Let's revisit our shared history.", status: "soon" },
+  { name: "Our INONG™ Memories", tagline: "Let's revisit our shared history.", status: "live" },
   { name: "INONG™ 24", tagline: "Our special 24-hour experiences.", status: "soon" },
 ];
 
@@ -119,7 +119,7 @@ export default function AboutPage() {
             },
             {
               title: "Pick an experience",
-              body: "Inside a One-on-One room, choose Know Me or Bet on Me. Group rooms can spin off a private one-on-one with any member.",
+              body: "Inside a One-on-One room, choose Know Me, Bet on Me, or revisit Our Memories. Group rooms can spin off a private one-on-one with any member.",
             },
             {
               title: "Take turns",

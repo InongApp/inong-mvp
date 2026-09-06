@@ -233,6 +233,12 @@ export default function RoomPage() {
           >
             🎯 Bet on Me
           </button>
+          <button
+            onClick={() => router.push(`/rooms/${room.id}/memories`)}
+            className="w-full rounded-full border border-mute py-4 font-medium text-paper transition hover:border-paper"
+          >
+            🕰️ Our Memories
+          </button>
         </div>
       )}
 
