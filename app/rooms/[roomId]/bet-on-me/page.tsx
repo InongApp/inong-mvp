@@ -8,23 +8,43 @@ import { useRoomSession } from "@/lib/useRoomSession";
 import {
   getLatestRound,
   startNextRound,
-  getRoundProgress,
   completeRoundIfFull,
   roundTypeInfo,
   RoundRow,
 } from "@/lib/rounds";
-import { resolveMatch } from "@/lib/matchJudge";
+import { getBalance, STARTING_BALANCE } from "@/lib/betBalance";
 import { notify } from "@/lib/notifyClient";
-import RevealCard from "@/components/RevealCard";
 import CommentThread from "@/components/CommentThread";
-import RoundRecap from "@/components/RoundRecap";
+import WagerSelector from "@/components/WagerSelector";
+import BetRevealCard from "@/components/BetRevealCard";
+import BetRoundRecap from "@/components/BetRoundRecap";
+
+// Bet on Me has its own identity, not a Know-Me reskin: the person who
+// creates the scenario (created_by) is the SUBJECT — they'll reveal a real
+// choice. The other member is the BETTOR — they wager points predicting
+// it. This is the OPPOSITE role convention from Know Me (where created_by
+// predicts) — deliberate, since here the Subject is the one with something
+// real to reveal about themselves.
+//
+// A round still means 5 turns per player (10 total), reusing the same
+// Round/Journey/Discoveries infrastructure as Know Me — only the resolution
+// mechanic (points, not match/no-match) is genuinely different.
 
 type Experience = {
   id: string;
   question: string;
   options: string[] | null;
   created_by: string;
-  ai_matched: boolean | null;
+};
+
+type Bet = {
+  id: string;
+  profile_id: string;
+  chosen_option: string;
+  points_wagered: number;
+  resolved: boolean;
+  won: boolean | null;
+  points_delta: number | null;
 };
 
 type Discovery = { id: string; summary: string };
@@ -35,24 +55,22 @@ export default function BetOnMePage() {
 
   const [round, setRound] = useState<RoundRow | null>(null);
   const [recapDiscoveries, setRecapDiscoveries] = useState<Discovery[]>([]);
-  const [recapProgress, setRecapProgress] = useState({ completed: 0, matches: 0 });
+  const [recapNetPoints, setRecapNetPoints] = useState(0);
   const [startingNext, setStartingNext] = useState(false);
 
   const [experience, setExperience] = useState<Experience | null>(null);
-  const [isComplete, setIsComplete] = useState(false);
-  const [selfAnswer, setSelfAnswer] = useState<string | null>(null);
-  const [predictionAnswer, setPredictionAnswer] = useState<string | null>(
-    null
-  );
-  const [roundMatched, setRoundMatched] = useState<boolean | null>(null);
-  const [matchedForId, setMatchedForId] = useState<string | null>(null);
+  const [response, setResponse] = useState<{ answer: string } | null>(null); // subject's true choice
+  const [bet, setBet] = useState<Bet | null>(null);
+  const [balance, setBalance] = useState(STARTING_BALANCE);
   const [loading, setLoading] = useState(true);
   const [asking, setAsking] = useState(false);
   const [askMode, setAskMode] = useState<"custom" | null>(null);
   const [customQuestion, setCustomQuestion] = useState("");
   const [customOptions, setCustomOptions] = useState<string[]>([]);
   const [optionDraft, setOptionDraft] = useState("");
-  const [freeText, setFreeText] = useState("");
+  const [wager, setWager] = useState<number | null>(null);
+  const [forcedWager, setForcedWager] = useState<number | null>(null); // set by Double or Nothing
+  const [doublingUp, setDoublingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,25 +84,39 @@ export default function BetOnMePage() {
   async function load() {
     if (!roomId || !userId) return;
 
+    const bal = await getBalance(roomId, userId);
+    setBalance(bal);
+
     const latest = await getLatestRound(roomId, "bet_on_me");
 
     if (latest && latest.status === "complete") {
       setRound(latest);
-      const progress = await getRoundProgress(latest.id);
-      setRecapProgress(progress);
 
       const { data: exps } = await supabase
         .from("experiences")
         .select("id")
         .eq("round_id", latest.id);
       const expIds = (exps ?? []).map((e: any) => e.id);
+
       if (expIds.length > 0) {
+        const { data: roundBets } = await supabase
+          .from("bets")
+          .select("profile_id, points_delta")
+          .in("experience_id", expIds)
+          .eq("profile_id", userId);
+        const net = (roundBets ?? []).reduce(
+          (sum: number, b: any) => sum + (b.points_delta ?? 0),
+          0
+        );
+        setRecapNetPoints(net);
+
         const { data: discoveries } = await supabase
           .from("discoveries")
           .select("id, summary")
           .in("source_experience_id", expIds);
         setRecapDiscoveries((discoveries as Discovery[]) ?? []);
       } else {
+        setRecapNetPoints(0);
         setRecapDiscoveries([]);
       }
 
@@ -96,16 +128,15 @@ export default function BetOnMePage() {
 
     if (!latest) {
       setExperience(null);
-      setIsComplete(false);
-      setSelfAnswer(null);
-      setPredictionAnswer(null);
+      setResponse(null);
+      setBet(null);
       setLoading(false);
       return;
     }
 
     const { data: experiences } = await supabase
       .from("experiences")
-      .select("id, question, options, created_by, ai_matched")
+      .select("id, question, options, created_by")
       .eq("round_id", latest.id)
       .order("created_at", { ascending: true });
 
@@ -115,70 +146,59 @@ export default function BetOnMePage() {
 
     if (!last) {
       setExperience(null);
-      setIsComplete(false);
-      setSelfAnswer(null);
-      setPredictionAnswer(null);
-    } else {
-      const { data: responses } = await supabase
-        .from("responses")
-        .select("profile_id, answer, is_prediction")
-        .eq("experience_id", last.id);
+      setResponse(null);
+      setBet(null);
+      setLoading(false);
+      return;
+    }
 
-      const complete = (responses ?? []).length >= 2;
-      setExperience(last);
-      setIsComplete(complete);
+    setExperience(last);
 
-      const mine = (responses ?? []).find((r) => r.profile_id === userId);
-      const theirs = (responses ?? []).find((r) => r.profile_id !== userId);
+    const { data: responses } = await supabase
+      .from("responses")
+      .select("answer")
+      .eq("experience_id", last.id)
+      .eq("is_prediction", false)
+      .maybeSingle();
+    setResponse(responses ?? null);
 
-      let self: string | null;
-      let prediction: string | null;
+    const { data: betRow } = await supabase
+      .from("bets")
+      .select("id, profile_id, chosen_option, points_wagered, resolved, won, points_delta")
+      .eq("experience_id", last.id)
+      .maybeSingle();
+    setBet((betRow as Bet) ?? null);
+
+    // Both sides exist but not yet resolved — resolve now. Safe to call
+    // redundantly from either browser; the DB function is idempotent.
+    if (responses && betRow && !(betRow as Bet).resolved) {
+      await supabase.rpc("resolve_bet", { p_bet_id: (betRow as Bet).id });
+      const { data: freshBet } = await supabase
+        .from("bets")
+        .select("id, profile_id, chosen_option, points_wagered, resolved, won, points_delta")
+        .eq("id", (betRow as Bet).id)
+        .single();
+      setBet((freshBet as Bet) ?? (betRow as Bet));
+      const freshBalance = await getBalance(roomId, userId);
+      setBalance(freshBalance);
+
+      // Extraction is the subject's job, same convention as Know Me
       if (last.created_by === userId) {
-        prediction = mine?.answer ?? null;
-        self = theirs?.answer ?? null;
-      } else {
-        self = mine?.answer ?? null;
-        prediction = theirs?.answer ?? null;
-      }
-      setSelfAnswer(self);
-      setPredictionAnswer(prediction);
-
-      if (complete && self && prediction && matchedForId !== last.id) {
-        const matched = await resolveMatch(last, self, prediction);
-        setRoundMatched(matched);
-        setMatchedForId(last.id);
-
-        const iAmSubject = last.created_by !== userId;
-        if (iAmSubject) {
-          fetch("/api/discoveries/extract", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              roomId,
-              experienceId: last.id,
-              profileId: userId,
-              question: last.question,
-              answer: self,
-            }),
-          }).catch(() => {});
-        }
+        fetch("/api/discoveries/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId,
+            experienceId: last.id,
+            profileId: userId,
+            question: last.question,
+            answer: responses.answer,
+          }),
+        }).catch(() => {});
       }
     }
 
     setLoading(false);
-  }
-
-  async function handleStartNextRound() {
-    if (!roomId) return;
-    setStartingNext(true);
-    try {
-      await startNextRound(roomId, "bet_on_me");
-      await load();
-    } catch (e: any) {
-      setError(e.message ?? "Couldn't start the next round.");
-    } finally {
-      setStartingNext(false);
-    }
   }
 
   async function ensureActiveRound(): Promise<RoundRow> {
@@ -188,13 +208,37 @@ export default function BetOnMePage() {
     return created;
   }
 
-  async function createFromBank() {
+  async function createScenario(question: string, options: string[]) {
     if (!roomId || !userId) return;
+    const activeRound = await ensureActiveRound();
+    const { error: insertErr } = await supabase.from("experiences").insert({
+      room_id: roomId,
+      round_id: activeRound.id,
+      type: "bet_on_me",
+      question,
+      options,
+      created_by: userId,
+    });
+    if (insertErr) {
+      setError(insertErr.message);
+      return;
+    }
+    if (friendId) {
+      notify(
+        friendId,
+        "New scenario in Bet on Me 🎰",
+        question,
+        `/rooms/${roomId}/bet-on-me`
+      );
+    }
+    load();
+  }
+
+  async function createFromBank() {
+    if (!roomId) return;
     setError(null);
     setAsking(true);
     try {
-      const activeRound = await ensureActiveRound();
-
       const { data: existing } = await supabase
         .from("experiences")
         .select("question")
@@ -202,49 +246,39 @@ export default function BetOnMePage() {
         .eq("type", "bet_on_me");
       const used = (existing ?? []).map((e: any) => e.question);
 
-      const { count: countInRound } = await supabase
-        .from("experiences")
-        .select("id", { count: "exact", head: true })
-        .eq("round_id", activeRound.id);
-      const forceFormat: "choice" | "open" =
-        activeRound.round_type === "play"
-          ? "choice"
-          : (countInRound ?? 0) % 2 === 0
-          ? "choice"
-          : "open";
-
       let question: string | null = null;
       let options: string[] | null = null;
 
       try {
+        const activeRound = round ?? (await ensureActiveRound());
         const res = await fetch("/api/generate-question", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "bet_on_me",
             usedQuestions: used,
-            askerName: "you",
-            subjectName: friendName,
+            askerName: friendName,
+            subjectName: "you",
             roomId,
             roundType: activeRound.round_type,
-            forceFormat,
+            forceFormat: "choice", // betting needs discrete options, always
           }),
         });
         const data = await res.json();
-        if (data.question) {
+        if (data.question && data.options) {
           question = data.question;
-          options = data.options ?? null;
+          options = data.options;
         }
       } catch {
         // fall through to static bank below
       }
 
-      if (!question) {
+      if (!question || !options) {
         const usedSet = new Set(used);
-        const bank = questionsByType("bet_on_me");
+        const bank = questionsByType("bet_on_me").filter((q) => q.options);
         const next = bank.find((q) => !usedSet.has(q.prompt));
         if (!next) {
-          setError("Couldn't generate a question right now — try again in a moment.");
+          setError("Couldn't generate a scenario right now — try again in a moment.");
           setAsking(false);
           return;
         }
@@ -252,63 +286,9 @@ export default function BetOnMePage() {
         options = next.options;
       }
 
-      const { error: insertErr } = await supabase.from("experiences").insert({
-        room_id: roomId,
-        round_id: activeRound.id,
-        type: "bet_on_me",
-        question,
-        options,
-        created_by: userId,
-      });
-      if (insertErr) setError(insertErr.message);
-      else {
-        if (friendId) {
-          notify(
-            friendId,
-            "New bet in Bet on Me 🎯",
-            question,
-            `/rooms/${roomId}/bet-on-me`
-          );
-        }
-        load();
-      }
+      await createScenario(question, options);
     } finally {
       setAsking(false);
-    }
-  }
-
-  async function submitCustomQuestion() {
-    if (!roomId || !userId) return;
-    if (!customQuestion.trim()) return setError("Write a question first.");
-    setError(null);
-    try {
-      const activeRound = await ensureActiveRound();
-      const { error: insertErr } = await supabase.from("experiences").insert({
-        room_id: roomId,
-        round_id: activeRound.id,
-        type: "bet_on_me",
-        question: customQuestion.trim(),
-        options: customOptions.length >= 2 ? customOptions : null,
-        created_by: userId,
-      });
-      if (insertErr) {
-        setError(insertErr.message);
-        return;
-      }
-      if (friendId) {
-        notify(
-          friendId,
-          "New bet in Bet on Me 🎯",
-          customQuestion.trim(),
-          `/rooms/${roomId}/bet-on-me`
-        );
-      }
-      setCustomQuestion("");
-      setCustomOptions([]);
-      setAskMode(null);
-      load();
-    } catch (e: any) {
-      setError(e.message ?? "Something went wrong.");
     }
   }
 
@@ -318,29 +298,109 @@ export default function BetOnMePage() {
     setOptionDraft("");
   }
 
-  async function submitAnswer(option: string) {
-    if (!experience || !userId || !round) return;
-    const isSubject = experience.created_by !== userId;
-    const otherAlreadyAnswered = isSubject
-      ? !!predictionAnswer
-      : !!selfAnswer;
+  async function submitCustomScenario() {
+    if (!customQuestion.trim()) return setError("Write a scenario first.");
+    if (customOptions.length < 2) {
+      return setError("Add at least 2 options for your Inong to bet on.");
+    }
+    setError(null);
+    await createScenario(customQuestion.trim(), customOptions);
+    setCustomQuestion("");
+    setCustomOptions([]);
+    setAskMode(null);
+  }
+
+  async function revealTrueChoice(option: string) {
+    if (!experience || !userId) return;
     await supabase.from("responses").insert({
       experience_id: experience.id,
       profile_id: userId,
       answer: option,
-      is_prediction: !isSubject,
+      is_prediction: false,
     });
-    if (otherAlreadyAnswered && friendId) {
-      notify(
-        friendId,
-        "Your reveal is ready ❤️",
-        experience.question,
-        `/rooms/${roomId}/bet-on-me`
-      );
-    }
-    await completeRoundIfFull(round.id);
-    setFreeText("");
     load();
+  }
+
+  async function placeBet(option: string) {
+    if (!experience || !userId || !wager) return;
+    const { error: betErr } = await supabase.from("bets").insert({
+      experience_id: experience.id,
+      profile_id: userId,
+      chosen_option: option,
+      points_wagered: wager,
+    });
+    if (betErr) {
+      setError(betErr.message);
+      return;
+    }
+    setWager(null);
+    load();
+  }
+
+  async function handleDoubleOrNothing() {
+    if (!roomId || !experience || !bet || !bet.points_delta) return;
+    setDoublingUp(true);
+    setError(null);
+    try {
+      const nextWager = bet.points_delta; // exactly what was just won
+      const activeRound = round!;
+
+      const { data: existing } = await supabase
+        .from("experiences")
+        .select("question")
+        .eq("room_id", roomId)
+        .eq("type", "bet_on_me");
+      const used = (existing ?? []).map((e: any) => e.question);
+
+      let question: string | null = null;
+      let options: string[] | null = null;
+      try {
+        const res = await fetch("/api/generate-question", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "bet_on_me",
+            usedQuestions: used,
+            askerName: friendName,
+            subjectName: "you",
+            roomId,
+            roundType: activeRound.round_type,
+            forceFormat: "choice",
+          }),
+        });
+        const data = await res.json();
+        if (data.question && data.options) {
+          question = data.question;
+          options = data.options;
+        }
+      } catch {}
+
+      if (!question || !options) {
+        setError("Couldn't set up the next bet right now — try again in a moment.");
+        return;
+      }
+
+      const { error: insertErr } = await supabase.from("experiences").insert({
+        room_id: roomId,
+        round_id: activeRound.id,
+        type: "bet_on_me",
+        question,
+        options,
+        created_by: experience.created_by, // same subject continues
+      });
+      if (insertErr) throw insertErr;
+
+      // Pre-fill the wager at exactly what was won — the bettor still picks
+      // their own option on the normal betting screen, nothing is placed
+      // automatically on their behalf.
+      setForcedWager(nextWager);
+      setWager(nextWager);
+      load();
+    } catch (e: any) {
+      setError(e.message ?? "Something went wrong.");
+    } finally {
+      setDoublingUp(false);
+    }
   }
 
   if (!ready || loading) {
@@ -353,23 +413,31 @@ export default function BetOnMePage() {
 
   if (round && round.status === "complete") {
     return (
-      <RoundRecap
+      <BetRoundRecap
         roundNumber={round.round_number}
         typeLabel={roundTypeInfo(round.round_type)?.label}
-        matches={recapProgress.matches}
-        total={recapProgress.completed}
+        netPoints={recapNetPoints}
+        balance={balance}
         friendName={friendName}
         discoveries={recapDiscoveries}
-        onStartNext={handleStartNextRound}
+        onStartNext={async () => {
+          setStartingNext(true);
+          try {
+            await startNextRound(roomId!, "bet_on_me");
+            await load();
+          } catch (e: any) {
+            setError(e.message ?? "Couldn't start the next round.");
+          } finally {
+            setStartingNext(false);
+          }
+        }}
         starting={startingNext}
-        accent="skyblue"
       />
     );
   }
 
   const roundLabel = round ? `Round ${round.round_number}` : "Round 1";
   const typeInfo = round ? roundTypeInfo(round.round_type) : null;
-  const currentMatched = matchedForId === experience?.id ? roundMatched : null;
 
   const scoreboard = (
     <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
@@ -385,41 +453,69 @@ export default function BetOnMePage() {
           History
         </button>
       </div>
-      {typeInfo && <p className="mt-1 text-mute">{typeInfo.description}</p>}
+      <p className="mt-1">Balance: {balance} points</p>
     </div>
   );
 
-  const isMyTurn =
-    !experience || (isComplete && experience.created_by !== userId);
+  const isSubject = experience ? experience.created_by === userId : false;
+  const isMyTurnToPresent = !experience || (bet?.resolved && !isSubject);
 
-  if ((!experience || isComplete) && isMyTurn) {
+  // ---------- Resolved: show the outcome to both people ----------
+  if (experience && bet?.resolved && response) {
+    const iAmBettor = bet.profile_id === userId;
     return (
       <div className="flex flex-1 flex-col">
         {scoreboard}
-        {isComplete && experience && currentMatched !== null && (
-          <>
-            <RevealCard
-              matched={currentMatched}
-              yourAnswer={
-                (experience.created_by === userId
-                  ? predictionAnswer
-                  : selfAnswer)!
-              }
-              theirGuess={
-                (experience.created_by === userId
-                  ? selfAnswer
-                  : predictionAnswer)!
-              }
-              friendName={friendName}
-            />
-            <CommentThread
-              experienceId={experience.id}
-              userId={userId!}
-              friendName={friendName}
-            />
-            <div className="my-6 border-t border-surface" />
-          </>
+        <BetRevealCard
+          won={!!bet.won}
+          pointsDelta={bet.points_delta ?? 0}
+          trueAnswer={response.answer}
+          chosenOption={bet.chosen_option}
+          pointsWagered={bet.points_wagered}
+          subjectName={isSubject ? "You" : friendName}
+          bettorName={iAmBettor ? "You" : friendName}
+          isBettor={iAmBettor}
+          onDoubleOrNothing={handleDoubleOrNothing}
+          doublingUp={doublingUp}
+        />
+        <CommentThread
+          experienceId={experience.id}
+          userId={userId!}
+          friendName={friendName}
+        />
+        {isMyTurnToPresent ? (
+          <div className="mt-6 space-y-3">
+            {typeInfo && (
+              <div className="rounded-card bg-skyblue/10 px-4 py-3 text-center">
+                <p className="text-xs font-semibold uppercase tracking-wide text-skyblue">
+                  {typeInfo.label} round
+                </p>
+                <p className="mt-1 text-sm text-paper">{typeInfo.description}</p>
+              </div>
+            )}
+            <button
+              onClick={createFromBank}
+              disabled={asking}
+              className="w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
+            >
+              {asking ? "Thinking of one..." : "Present the next scenario"}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-6 text-center text-sm text-mute">
+            Waiting for {friendName} to present the next scenario.
+          </p>
         )}
+        {error && <p className="mt-4 text-center text-sm text-coral">{error}</p>}
+      </div>
+    );
+  }
+
+  // ---------- No active scenario, it's my turn to present one ----------
+  if (isMyTurnToPresent) {
+    return (
+      <div className="flex flex-1 flex-col">
+        {scoreboard}
 
         {askMode === "custom" ? (
           <div className="flex flex-col">
@@ -430,19 +526,17 @@ export default function BetOnMePage() {
               ← Back
             </button>
             <h2 className="font-serif mt-4 text-xl font-semibold">
-              Bet on {friendName}
+              Give {friendName} something to bet on
             </h2>
             <textarea
               value={customQuestion}
               onChange={(e) => setCustomQuestion(e.target.value)}
-              placeholder="e.g. What will I order at the game tonight?"
+              placeholder="e.g. What will I actually order for dinner tonight?"
               rows={3}
               className="mt-4 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
             />
-
             <p className="mt-4 text-sm text-mute">
-              Optional: add 2–4 answer choices, or leave blank for an open
-              answer.
+              Add 2–4 options — {friendName} will bet on one.
             </p>
             {customOptions.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
@@ -462,7 +556,7 @@ export default function BetOnMePage() {
                   value={optionDraft}
                   onChange={(e) => setOptionDraft(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addOption()}
-                  placeholder="Add a choice"
+                  placeholder="Add an option"
                   className="flex-1 rounded-card bg-surface px-4 py-2 text-sm text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
                 />
                 <button
@@ -473,12 +567,11 @@ export default function BetOnMePage() {
                 </button>
               </div>
             )}
-
             <button
-              onClick={submitCustomQuestion}
+              onClick={submitCustomScenario}
               className="mt-6 w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90"
             >
-              Send question
+              Send scenario
             </button>
           </div>
         ) : (
@@ -495,7 +588,7 @@ export default function BetOnMePage() {
               Your turn
             </p>
             <h1 className="font-serif mt-3 text-2xl font-semibold">
-              Bet on {friendName}
+              Give {friendName} something to bet on
             </h1>
             <div className="mt-8 w-full space-y-3">
               <button
@@ -509,63 +602,74 @@ export default function BetOnMePage() {
                 onClick={() => setAskMode("custom")}
                 className="w-full rounded-full border border-mute py-4 font-medium text-paper transition hover:border-paper"
               >
-                Ask your own bet
+                Set up your own scenario
               </button>
             </div>
           </div>
         )}
-
         {error && <p className="mt-4 text-sm text-coral">{error}</p>}
       </div>
     );
   }
 
-  if (isComplete && !isMyTurn) {
+  // ---------- Active scenario, not yet resolved ----------
+  if (isSubject) {
+    if (response) {
+      return (
+        <div className="flex flex-1 flex-col">
+          {scoreboard}
+          <div className="flex flex-1 flex-col items-center justify-center text-center">
+            <p className="text-sm uppercase tracking-wide text-mute">
+              Locked in
+            </p>
+            <p className="mt-4 max-w-xs text-mute">
+              Waiting for {friendName} to place their bet.
+            </p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-1 flex-col">
         {scoreboard}
-        {currentMatched !== null && (
-          <RevealCard
-            matched={currentMatched}
-            yourAnswer={
-              (experience!.created_by === userId
-                ? predictionAnswer
-                : selfAnswer)!
-            }
-            theirGuess={
-              (experience!.created_by === userId
-                ? selfAnswer
-                : predictionAnswer)!
-            }
-            friendName={friendName}
-          />
-        )}
-        <CommentThread
-          experienceId={experience!.id}
-          userId={userId!}
-          friendName={friendName}
-        />
-        <p className="mt-6 text-center text-sm text-mute">
-          Waiting for {friendName} to send the next bet.
-        </p>
+        <div className="flex flex-1 flex-col justify-center">
+          <p className="text-sm uppercase tracking-wide text-mute">
+            Reveal your real choice
+          </p>
+          <h1 className="font-serif mt-3 text-2xl font-semibold leading-snug">
+            {experience!.question}
+          </h1>
+          <p className="mt-2 text-sm text-mute">
+            {friendName} won&rsquo;t see this until they&rsquo;ve placed their bet.
+          </p>
+          <div className="mt-8 space-y-3">
+            {experience!.options!.map((option) => (
+              <button
+                key={option}
+                onClick={() => revealTrueChoice(option)}
+                className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue"
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
-  const isSubject = experience!.created_by !== userId;
-  const alreadyAnswered = isSubject ? !!selfAnswer : !!predictionAnswer;
-
-  if (alreadyAnswered) {
+  // I'm the bettor
+  if (bet) {
     return (
       <div className="flex flex-1 flex-col">
         {scoreboard}
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <p className="text-sm uppercase tracking-wide text-mute">
-            Waiting on {friendName}
+            Bet placed
           </p>
           <p className="mt-4 max-w-xs text-mute">
-            Your answer&rsquo;s locked in. We&rsquo;ll reveal it once they&rsquo;ve
-            answered too.
+            You bet {bet.points_wagered} points on &ldquo;{bet.chosen_option}
+            &rdquo;. Waiting for {friendName} to reveal.
           </p>
         </div>
       </div>
@@ -577,44 +681,49 @@ export default function BetOnMePage() {
       {scoreboard}
       <div className="flex flex-1 flex-col justify-center">
         <p className="text-sm uppercase tracking-wide text-mute">
-          {isSubject ? "Answer for yourself" : `Bet on ${friendName}`}
+          Bet on {friendName}
         </p>
         <h1 className="font-serif mt-3 text-2xl font-semibold leading-snug">
-          {isSubject
-            ? experience!.question
-            : `What will ${friendName} pick? "${experience!.question}"`}
+          {experience!.question}
         </h1>
 
-        {experience!.options && experience!.options.length > 0 ? (
-          <div className="mt-8 space-y-3">
-            {experience!.options.map((option) => (
-              <button
-                key={option}
-                onClick={() => submitAnswer(option)}
-                className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue"
-              >
-                {option}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-8">
-            <textarea
-              value={freeText}
-              onChange={(e) => setFreeText(e.target.value)}
-              placeholder="Type your answer..."
-              rows={3}
-              className="w-full rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
-            />
+        <div className="mt-6">
+          {forcedWager ? (
+            <div className="rounded-card bg-coral/10 px-4 py-3 text-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-coral">
+                Double or nothing
+              </p>
+              <p className="mt-1 text-sm text-paper">
+                Wagering {forcedWager} points — pick your option below.
+              </p>
+            </div>
+          ) : (
+            <WagerSelector balance={balance} value={wager} onChange={setWager} />
+          )}
+        </div>
+
+        <div className="mt-6 space-y-3">
+          {experience!.options!.map((option) => (
             <button
-              onClick={() => freeText.trim() && submitAnswer(freeText.trim())}
-              disabled={!freeText.trim()}
-              className="mt-4 w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
+              key={option}
+              disabled={!wager}
+              onClick={() => {
+                placeBet(option);
+                setForcedWager(null);
+              }}
+              className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Send answer
+              {option}
             </button>
-          </div>
+          ))}
+        </div>
+        {!wager && (
+          <p className="mt-3 text-center text-xs text-mute">
+            Pick a wager amount above first.
+          </p>
         )}
+
+        {error && <p className="mt-4 text-sm text-coral">{error}</p>}
       </div>
     </div>
   );

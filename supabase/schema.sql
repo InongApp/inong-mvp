@@ -97,6 +97,29 @@ create table discoveries (
   created_at timestamptz not null default now()
 );
 
+-- BET ON ME's points economy. Distinct from Know Me's match/no-match —
+-- this is a wager mechanic: a Subject reveals a real choice, a Bettor
+-- wagers points predicting it, win/loss resolves atomically.
+create table bet_balances (
+  room_id uuid not null references rooms(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  points int not null default 500,
+  updated_at timestamptz not null default now(),
+  primary key (room_id, profile_id)
+);
+
+create table bets (
+  id uuid primary key default uuid_generate_v4(),
+  experience_id uuid not null references experiences(id) on delete cascade unique, -- one bet per scenario
+  profile_id uuid not null references profiles(id) on delete cascade, -- the bettor
+  chosen_option text not null,
+  points_wagered int not null check (points_wagered > 0),
+  resolved boolean not null default false,
+  won boolean,
+  points_delta int,
+  created_at timestamptz not null default now()
+);
+
 create table responses (
   id uuid primary key default uuid_generate_v4(),
   experience_id uuid not null references experiences(id) on delete cascade,
@@ -128,6 +151,8 @@ create index idx_room_members_profile on room_members(profile_id);
 create index idx_experiences_room on experiences(room_id);
 create index idx_responses_experience on responses(experience_id);
 create index idx_comments_experience on experience_comments(experience_id);
+create index idx_bets_profile on bets(profile_id);
+create index idx_bet_balances_profile on bet_balances(profile_id);
 
 -- =========================================================
 -- Row Level Security
@@ -140,6 +165,8 @@ alter table room_invites enable row level security;
 alter table experiences enable row level security;
 alter table experience_rounds enable row level security;
 alter table discoveries enable row level security;
+alter table bet_balances enable row level security;
+alter table bets enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -250,6 +277,36 @@ create policy "experience_rounds: members update" on experience_rounds
 create policy "discoveries: members read" on discoveries
   for select using (
     exists (select 1 from room_members m where m.room_id = discoveries.room_id and m.profile_id = auth.uid())
+  );
+
+-- BET_BALANCES: members can read; there is deliberately no insert/update
+-- policy for authenticated users — balances are only ever changed inside
+-- the resolve_bet() function below, which runs as definer. This prevents
+-- anyone from crediting themselves points directly.
+create policy "bet_balances: members read" on bet_balances
+  for select using (
+    exists (select 1 from room_members m where m.room_id = bet_balances.room_id and m.profile_id = auth.uid())
+  );
+
+-- BETS: members read; you can only ever place a bet as yourself. No update
+-- policy — resolution happens only inside resolve_bet(), not directly.
+create policy "bets: room members read" on bets
+  for select using (
+    exists (
+      select 1 from experiences e
+      join room_members m on m.room_id = e.room_id
+      where e.id = bets.experience_id and m.profile_id = auth.uid()
+    )
+  );
+
+create policy "bets: self insert" on bets
+  for insert with check (
+    profile_id = auth.uid()
+    and exists (
+      select 1 from experiences e
+      join room_members m on m.room_id = e.room_id
+      where e.id = bets.experience_id and m.profile_id = auth.uid()
+    )
   );
 
 create policy "responses: room members read" on responses
@@ -383,4 +440,53 @@ end;
 $$;
 
 grant execute on function accept_invite(text) to authenticated;
+
+-- =========================================================
+-- Resolve a bet atomically — checks the subject's revealed answer against
+-- the bet, applies the points delta, and marks it resolved, all in one
+-- locked transaction. Idempotent: calling it again on an already-resolved
+-- bet is a safe no-op. Either client can call this safely; only the first
+-- call actually applies anything.
+-- =========================================================
+create or replace function resolve_bet(p_bet_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_bet bets%rowtype;
+  v_experience experiences%rowtype;
+  v_true_answer text;
+  v_won boolean;
+  v_delta int;
+begin
+  select * into v_bet from bets where id = p_bet_id for update;
+  if not found or v_bet.resolved then
+    return; -- already resolved, or doesn't exist — safe no-op
+  end if;
+
+  select * into v_experience from experiences where id = v_bet.experience_id;
+
+  select answer into v_true_answer from responses
+    where experience_id = v_bet.experience_id and is_prediction = false
+    limit 1;
+
+  if v_true_answer is null then
+    return; -- the subject hasn't revealed their true choice yet
+  end if;
+
+  v_won := (v_true_answer = v_bet.chosen_option);
+  v_delta := case when v_won then v_bet.points_wagered else -v_bet.points_wagered end;
+
+  update bets set resolved = true, won = v_won, points_delta = v_delta where id = v_bet.id;
+
+  insert into bet_balances (room_id, profile_id, points)
+  values (v_experience.room_id, v_bet.profile_id, 500 + v_delta)
+  on conflict (room_id, profile_id)
+  do update set points = bet_balances.points + v_delta, updated_at = now();
+end;
+$$;
+
+grant execute on function resolve_bet(uuid) to authenticated;
 

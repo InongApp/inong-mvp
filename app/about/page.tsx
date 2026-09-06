@@ -10,7 +10,7 @@ const EXPERIENCES: {
   status: ExperienceStatus;
 }[] = [
   { name: "Know Your INONG™", tagline: "How well do you know me? Predict what I'll choose.", status: "live" },
-  { name: "Bet on Me", tagline: "How confident are you in me? Place a bet, then reveal.", status: "soon" },
+  { name: "Bet on Me", tagline: "How confident are you in me? Place a bet, then reveal.", status: "live" },
   { name: "INONG™ Visuals in Words", tagline: "What am I looking at?", status: "soon" },
   { name: "Our INONG™ Thing", tagline: "Our jokes, our lingo, our stories.", status: "soon" },
   { name: "Surprise Me", tagline: "Our random challenges.", status: "soon" },
@@ -107,9 +107,8 @@ export default function AboutPage() {
       <section className="mt-10">
         <h2 className="font-serif text-xl font-semibold">How to play</h2>
         <p className="mt-3 text-sm text-mute">
-          Walking through Know Your INONG™, the experience live today
-          (Bet on Me currently runs the same mechanic as a preview, ahead of
-          its own confidence/wager identity):
+          Walking through Know Your INONG™ and Bet on Me, the two experiences
+          live today (each with its own mechanic — see below):
         </p>
 
         <ol className="mt-4 space-y-4">
