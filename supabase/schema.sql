@@ -62,7 +62,7 @@ create table room_invites (
 create table experience_rounds (
   id uuid primary key default uuid_generate_v4(),
   room_id uuid not null references rooms(id) on delete cascade,
-  type text not null check (type in ('know_me', 'bet_on_me', 'visuals_in_words')),
+  type text not null check (type in ('know_me', 'bet_on_me', 'visuals_in_words', 'visuals_guess')),
   round_number int not null,
   round_type text check (round_type in ('discover', 'play', 'deepen', 'surprise', 'connection', 'memory')), -- null = legacy round predating round-type intelligence
   status text not null default 'active' check (status in ('active', 'complete')),
@@ -75,11 +75,15 @@ create table experiences (
   id uuid primary key default uuid_generate_v4(),
   room_id uuid not null references rooms(id) on delete cascade,
   round_id uuid references experience_rounds(id) on delete set null, -- null = legacy pre-round data
-  type text not null check (type in ('know_me', 'bet_on_me', 'visuals_in_words')),
+  type text not null check (type in ('know_me', 'bet_on_me', 'visuals_in_words', 'visuals_guess')),
   question text not null,
   options jsonb, -- nullable: null means an open-ended (free-text) custom question
   created_by uuid not null references profiles(id),
   ai_matched boolean, -- cached AI judgment for free-text rounds; null = not yet judged
+  clue_1 text, -- visuals_guess only
+  clue_2 text, -- visuals_guess only
+  correct_answer text, -- visuals_guess only
+  clues_revealed int not null default 1, -- visuals_guess only: 1 or 2
   created_at timestamptz not null default now()
 );
 
@@ -120,6 +124,27 @@ create table bets (
   created_at timestamptz not null default now()
 );
 
+-- GUESS THE PICTURE mode: one player presents clues, the other guesses.
+-- Correct on clue 1 = 3 points, correct on clue 2 = 1 point, wrong = 0.
+create table guess_results (
+  id uuid primary key default uuid_generate_v4(),
+  experience_id uuid not null references experiences(id) on delete cascade unique,
+  guesser_profile_id uuid not null references profiles(id) on delete cascade,
+  guess_answer text not null,
+  clues_used int not null check (clues_used in (1, 2)),
+  correct boolean not null,
+  points int not null,
+  created_at timestamptz not null default now()
+);
+
+create table guess_scores (
+  room_id uuid not null references rooms(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  points int not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (room_id, profile_id)
+);
+
 create table responses (
   id uuid primary key default uuid_generate_v4(),
   experience_id uuid not null references experiences(id) on delete cascade,
@@ -153,6 +178,8 @@ create index idx_responses_experience on responses(experience_id);
 create index idx_comments_experience on experience_comments(experience_id);
 create index idx_bets_profile on bets(profile_id);
 create index idx_bet_balances_profile on bet_balances(profile_id);
+create index idx_guess_results_guesser on guess_results(guesser_profile_id);
+create index idx_guess_scores_profile on guess_scores(profile_id);
 
 -- =========================================================
 -- Row Level Security
@@ -167,6 +194,8 @@ alter table experience_rounds enable row level security;
 alter table discoveries enable row level security;
 alter table bet_balances enable row level security;
 alter table bets enable row level security;
+alter table guess_results enable row level security;
+alter table guess_scores enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -307,6 +336,23 @@ create policy "bets: self insert" on bets
       join room_members m on m.room_id = e.room_id
       where e.id = bets.experience_id and m.profile_id = auth.uid()
     )
+  );
+
+-- GUESS_RESULTS / GUESS_SCORES: read-only for clients. All writes happen
+-- server-side (in /api/resolve-guess, via the service role), since
+-- correctness there is judged by AI and must not be trusted from the client.
+create policy "guess_results: room members read" on guess_results
+  for select using (
+    exists (
+      select 1 from experiences e
+      join room_members m on m.room_id = e.room_id
+      where e.id = guess_results.experience_id and m.profile_id = auth.uid()
+    )
+  );
+
+create policy "guess_scores: members read" on guess_scores
+  for select using (
+    exists (select 1 from room_members m where m.room_id = guess_scores.room_id and m.profile_id = auth.uid())
   );
 
 create policy "responses: room members read" on responses
@@ -489,4 +535,25 @@ end;
 $$;
 
 grant execute on function resolve_bet(uuid) to authenticated;
+
+-- =========================================================
+-- Applies Guess-mode points atomically. Called only from the server
+-- (service role) in /api/resolve-guess, after AI has judged correctness —
+-- never trust a client-submitted point value directly.
+-- =========================================================
+create or replace function apply_guess_points(p_room_id uuid, p_profile_id uuid, p_points int)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into guess_scores (room_id, profile_id, points)
+  values (p_room_id, p_profile_id, p_points)
+  on conflict (room_id, profile_id)
+  do update set points = guess_scores.points + p_points, updated_at = now();
+end;
+$$;
+
+grant execute on function apply_guess_points(uuid, uuid, int) to authenticated;
 

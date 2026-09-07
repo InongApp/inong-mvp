@@ -156,9 +156,12 @@ export async function getRoundProgress(roundId: string) {
 // Call after every answer submission. Closes the round the moment it
 // hits ROUND_SIZE — deliberately, not as a punishment, just the natural
 // stopping point the round was always going to reach.
-export async function completeRoundIfFull(roundId: string): Promise<boolean> {
+export async function completeRoundIfFull(
+  roundId: string,
+  roundSize: number = ROUND_SIZE
+): Promise<boolean> {
   const progress = await getRoundProgress(roundId);
-  if (progress.completed >= ROUND_SIZE) {
+  if (progress.completed >= roundSize) {
     await supabase
       .from("experience_rounds")
       .update({ status: "complete", completed_at: new Date().toISOString() })
