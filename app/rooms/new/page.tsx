@@ -11,6 +11,7 @@ const ROOM_TYPES: {
   label: string;
   blurb: string;
   maxMembers: number | null;
+  disabled?: boolean;
 }[] = [
   {
     type: "one_on_one",
@@ -23,12 +24,14 @@ const ROOM_TYPES: {
     label: "Inner Circle",
     blurb: "Up to 12 close people, plus you.",
     maxMembers: 13,
+    disabled: true,
   },
   {
     type: "family",
     label: "Family",
     blurb: "Unlimited members.",
     maxMembers: null,
+    disabled: true,
   },
 ];
 
@@ -109,14 +112,30 @@ export default function NewRoomPage() {
             <h1 className="font-serif text-2xl font-semibold">
               What kind of room?
             </h1>
+            <p className="mt-2 text-sm text-mute">
+              Group rooms are temporarily paused for beta testing — please
+              use One-on-One for now.
+            </p>
             <div className="mt-8 space-y-3">
               {ROOM_TYPES.map((r) => (
                 <button
                   key={r.type}
-                  onClick={() => setType(r.type)}
-                  className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-coral"
+                  disabled={r.disabled}
+                  onClick={() => !r.disabled && setType(r.type)}
+                  className={`w-full rounded-card border px-5 py-4 text-left transition ${
+                    r.disabled
+                      ? "cursor-not-allowed border-mute/40 opacity-50"
+                      : "border-mute hover:border-coral"
+                  }`}
                 >
-                  <p className="font-serif text-lg text-paper">{r.label}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="font-serif text-lg text-paper">{r.label}</p>
+                    {r.disabled && (
+                      <span className="rounded-full border border-mute px-2 py-0.5 text-[10px] uppercase tracking-wide text-mute">
+                        Coming soon
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-1 text-sm text-mute">{r.blurb}</p>
                 </button>
               ))}

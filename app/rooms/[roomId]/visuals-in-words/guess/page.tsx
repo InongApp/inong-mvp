@@ -467,10 +467,29 @@ export default function GuessThePicturePage() {
           <p className="text-sm uppercase tracking-wide text-mute">
             {friendName} is guessing
           </p>
-          <p className="mt-4 max-w-xs text-mute">
-            Clue {experience!.clues_revealed} is showing. Sit tight.
+          <div className="mt-6 w-full space-y-2 text-left">
+            <div className="rounded-card bg-surface px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-mute">Clue 1</p>
+              <p className="mt-1 text-paper">{experience!.clue_1}</p>
+            </div>
+            <div className="rounded-card bg-surface px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-mute">Clue 2</p>
+              <p className="mt-1 text-paper">{experience!.clue_2}</p>
+            </div>
+            <div className="rounded-card bg-surface px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-mute">The answer</p>
+              <p className="mt-1 text-paper">{experience!.correct_answer}</p>
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-mute">
+            {friendName} can currently see clue {experience!.clues_revealed}.
           </p>
         </div>
+        <CommentThread
+          experienceId={experience!.id}
+          userId={userId!}
+          friendName={friendName}
+        />
       </div>
     );
   }
@@ -526,6 +545,11 @@ export default function GuessThePicturePage() {
 
         {error && <p className="mt-4 text-sm text-coral">{error}</p>}
       </div>
+      <CommentThread
+        experienceId={experience!.id}
+        userId={userId!}
+        friendName={friendName}
+      />
     </div>
   );
 }

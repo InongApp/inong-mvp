@@ -24,7 +24,7 @@ export default function RevealCard({
           matched ? "bg-coral" : "bg-surface"
         }`}
       >
-        {matched ? "❤️" : "😂"}
+        {matched ? <span className="text-white">✓</span> : "😂"}
       </div>
 
       <h1 className="font-serif text-2xl font-semibold">

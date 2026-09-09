@@ -537,6 +537,43 @@ $$;
 grant execute on function resolve_bet(uuid) to authenticated;
 
 -- =========================================================
+-- Applies a bet result that's already been judged (by AI, leniently,
+-- server-side in /api/resolve-bet) — trusts p_won as input rather than
+-- doing exact string comparison itself. Replaces resolve_bet() for new
+-- resolutions; resolve_bet() is left in place, unused, for compatibility.
+-- =========================================================
+create or replace function apply_bet_result(p_bet_id uuid, p_won boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_bet bets%rowtype;
+  v_experience experiences%rowtype;
+  v_delta int;
+begin
+  select * into v_bet from bets where id = p_bet_id for update;
+  if not found or v_bet.resolved then
+    return;
+  end if;
+
+  select * into v_experience from experiences where id = v_bet.experience_id;
+
+  v_delta := case when p_won then v_bet.points_wagered else -v_bet.points_wagered end;
+
+  update bets set resolved = true, won = p_won, points_delta = v_delta where id = v_bet.id;
+
+  insert into bet_balances (room_id, profile_id, points)
+  values (v_experience.room_id, v_bet.profile_id, 500 + v_delta)
+  on conflict (room_id, profile_id)
+  do update set points = bet_balances.points + v_delta, updated_at = now();
+end;
+$$;
+
+grant execute on function apply_bet_result(uuid, boolean) to authenticated;
+
+-- =========================================================
 -- Applies Guess-mode points atomically. Called only from the server
 -- (service role) in /api/resolve-guess, after AI has judged correctness —
 -- never trust a client-submitted point value directly.

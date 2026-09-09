@@ -71,6 +71,10 @@ export default function BetOnMePage() {
   const [wager, setWager] = useState<number | null>(null);
   const [forcedWager, setForcedWager] = useState<number | null>(null); // set by Double or Nothing
   const [doublingUp, setDoublingUp] = useState(false);
+  const [subjectFreeMode, setSubjectFreeMode] = useState(false);
+  const [subjectFreeText, setSubjectFreeText] = useState("");
+  const [bettorFreeMode, setBettorFreeMode] = useState(false);
+  const [bettorFreeText, setBettorFreeText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -169,10 +173,15 @@ export default function BetOnMePage() {
       .maybeSingle();
     setBet((betRow as Bet) ?? null);
 
-    // Both sides exist but not yet resolved — resolve now. Safe to call
-    // redundantly from either browser; the DB function is idempotent.
+    // Both sides exist but not yet resolved — resolve now via the
+    // AI-lenient route. Safe to call redundantly from either browser; the
+    // route is idempotent.
     if (responses && betRow && !(betRow as Bet).resolved) {
-      await supabase.rpc("resolve_bet", { p_bet_id: (betRow as Bet).id });
+      await fetch("/api/resolve-bet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ betId: (betRow as Bet).id }),
+      }).catch(() => {});
       const { data: freshBet } = await supabase
         .from("bets")
         .select("id, profile_id, chosen_option, points_wagered, resolved, won, points_delta")
@@ -626,6 +635,11 @@ export default function BetOnMePage() {
               Waiting for {friendName} to place their bet.
             </p>
           </div>
+          <CommentThread
+            experienceId={experience!.id}
+            userId={userId!}
+            friendName={friendName}
+          />
         </div>
       );
     }
@@ -642,17 +656,47 @@ export default function BetOnMePage() {
           <p className="mt-2 text-sm text-mute">
             {friendName} won&rsquo;t see this until they&rsquo;ve placed their bet.
           </p>
-          <div className="mt-8 space-y-3">
-            {experience!.options!.map((option) => (
+          {subjectFreeMode ? (
+            <div className="mt-8">
+              <input
+                value={subjectFreeText}
+                onChange={(e) => setSubjectFreeText(e.target.value)}
+                placeholder="Type your real answer..."
+                className="w-full rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
+              />
               <button
-                key={option}
-                onClick={() => revealTrueChoice(option)}
-                className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue"
+                onClick={() => subjectFreeText.trim() && revealTrueChoice(subjectFreeText.trim())}
+                disabled={!subjectFreeText.trim()}
+                className="mt-3 w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
               >
-                {option}
+                Lock in this answer
               </button>
-            ))}
-          </div>
+              <button
+                onClick={() => setSubjectFreeMode(false)}
+                className="mt-2 w-full text-center text-sm text-mute hover:text-paper"
+              >
+                ← Back to the options
+              </button>
+            </div>
+          ) : (
+            <div className="mt-8 space-y-3">
+              {experience!.options!.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => revealTrueChoice(option)}
+                  className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue"
+                >
+                  {option}
+                </button>
+              ))}
+              <button
+                onClick={() => setSubjectFreeMode(true)}
+                className="w-full rounded-card border border-dashed border-mute px-5 py-4 text-left text-mute transition hover:border-paper hover:text-paper"
+              >
+                ✍️ Fill in your own words
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -672,6 +716,11 @@ export default function BetOnMePage() {
             &rdquo;. Waiting for {friendName} to reveal.
           </p>
         </div>
+        <CommentThread
+          experienceId={experience!.id}
+          userId={userId!}
+          friendName={friendName}
+        />
       </div>
     );
   }
@@ -702,21 +751,57 @@ export default function BetOnMePage() {
           )}
         </div>
 
-        <div className="mt-6 space-y-3">
-          {experience!.options!.map((option) => (
+        {bettorFreeMode ? (
+          <div className="mt-6">
+            <input
+              value={bettorFreeText}
+              onChange={(e) => setBettorFreeText(e.target.value)}
+              placeholder="Your guess..."
+              className="w-full rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-skyblue"
+            />
             <button
-              key={option}
-              disabled={!wager}
               onClick={() => {
-                placeBet(option);
+                if (!wager || !bettorFreeText.trim()) return;
+                placeBet(bettorFreeText.trim());
                 setForcedWager(null);
+                setBettorFreeMode(false);
               }}
-              className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!wager || !bettorFreeText.trim()}
+              className="mt-3 w-full rounded-full bg-skyblue py-4 font-medium text-ink transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {option}
+              Place bet
             </button>
-          ))}
-        </div>
+            <button
+              onClick={() => setBettorFreeMode(false)}
+              className="mt-2 w-full text-center text-sm text-mute hover:text-paper"
+            >
+              ← Back to the options
+            </button>
+          </div>
+        ) : (
+          <div className="mt-6 space-y-3">
+            {experience!.options!.map((option) => (
+              <button
+                key={option}
+                disabled={!wager}
+                onClick={() => {
+                  placeBet(option);
+                  setForcedWager(null);
+                }}
+                className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-skyblue hover:text-skyblue disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {option}
+              </button>
+            ))}
+            <button
+              disabled={!wager}
+              onClick={() => setBettorFreeMode(true)}
+              className="w-full rounded-card border border-dashed border-mute px-5 py-4 text-left text-mute transition hover:border-paper hover:text-paper disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ✍️ Fill in your own words
+            </button>
+          </div>
+        )}
         {!wager && (
           <p className="mt-3 text-center text-xs text-mute">
             Pick a wager amount above first.

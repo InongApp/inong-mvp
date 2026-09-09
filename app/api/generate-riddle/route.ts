@@ -28,7 +28,11 @@ export async function POST(req: Request) {
       }
     }
 
-    const systemPrompt = `You create a "what am I looking at?" picture-guessing riddle for two close people to play together. Invent a specific, concrete, describable thing — an object, place, scene, animal, or image (real or imaginative) that's genuinely fun and fair to guess within two clues. Provide clue_1 (vague — a general hint that doesn't give it away), clue_2 (much more specific — narrows it down significantly), and correct_answer (short, a few words at most). Keep it playful, never mean or obscure to the point of being unguessable.`;
+    const systemPrompt = `You create a "what am I looking at?" picture-guessing riddle for two close people to play together. Invent a specific, concrete, describable thing — an object, place, scene, animal, or image (real or imaginative) that's genuinely fun and fair to guess within two clues.
+
+CRITICAL — avoid ambiguity: your clues must point UNIQUELY to your correct_answer and rule out obvious look-alikes. If your answer could easily be confused with something else that fits the same clues equally well (e.g. clues that fit both "bee" and "moth", or "cat" and "small dog"), you have failed — either make the answer the more obvious/common thing the clues describe, or add a distinguishing detail to clue_2 that clearly rules out the confusable alternative. Before finalizing, check: could a reasonable person guess something else that also fits both clues equally well? If yes, fix it.
+
+Provide clue_1 (vague — a general hint that doesn't give it away) and clue_2 (much more specific — narrows it down to ONLY your correct_answer, ruling out near-misses), plus correct_answer (short, a few words at most). Keep it playful, never mean or so obscure it's unfair.`;
 
     const usedList = (usedAnswers || []).slice(-20);
     const userPrompt = `Answers already used in this relationship (never repeat these):

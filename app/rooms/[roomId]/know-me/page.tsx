@@ -582,6 +582,11 @@ export default function KnowMePage() {
             You&rsquo;ve answered. We&rsquo;ll reveal it as soon as they do too.
           </p>
         </div>
+        <CommentThread
+          experienceId={experience!.id}
+          userId={userId!}
+          friendName={friendName}
+        />
       </div>
     );
   }
@@ -630,6 +635,11 @@ export default function KnowMePage() {
           </div>
         )}
       </div>
+      <CommentThread
+        experienceId={experience!.id}
+        userId={userId!}
+        friendName={friendName}
+      />
     </div>
   );
 }

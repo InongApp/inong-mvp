@@ -387,6 +387,11 @@ export default function VisualsInWordsPage() {
             as they answer too.
           </p>
         </div>
+        <CommentThread
+          experienceId={experience!.id}
+          userId={userId!}
+          friendName={friendName}
+        />
       </div>
     );
   }
@@ -419,6 +424,11 @@ export default function VisualsInWordsPage() {
         </div>
         {error && <p className="mt-4 text-sm text-coral">{error}</p>}
       </div>
+      <CommentThread
+        experienceId={experience!.id}
+        userId={userId!}
+        friendName={friendName}
+      />
     </div>
   );
 }
