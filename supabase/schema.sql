@@ -145,6 +145,51 @@ create table guess_scores (
   primary key (room_id, profile_id)
 );
 
+-- OUR INONG™ THING: a jointly-editable, persistent archive of shared
+-- culture (inside jokes, nicknames, stories) — no rounds, no scoring.
+create table inside_jokes (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  title text not null,
+  story text not null,
+  created_by uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+-- SURPRISE ME: real-world dares drawn from a static bank (zero AI cost by
+-- design). No rounds — a simple continuous stream with a streak count.
+create table surprises (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  prompt text not null,
+  category text,
+  status text not null default 'active' check (status in ('active', 'done', 'skipped')),
+  created_by uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+-- INONG™ 24: one prompt per room per calendar day, generated lazily on
+-- first visit that day, disappearing after 24 hours.
+create table daily_prompts (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  prompt_date date not null,
+  question text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  unique (room_id, prompt_date)
+);
+
+create table daily_responses (
+  id uuid primary key default uuid_generate_v4(),
+  daily_prompt_id uuid not null references daily_prompts(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  answer text not null,
+  created_at timestamptz not null default now(),
+  unique (daily_prompt_id, profile_id)
+);
+
 create table responses (
   id uuid primary key default uuid_generate_v4(),
   experience_id uuid not null references experiences(id) on delete cascade,
@@ -180,6 +225,10 @@ create index idx_bets_profile on bets(profile_id);
 create index idx_bet_balances_profile on bet_balances(profile_id);
 create index idx_guess_results_guesser on guess_results(guesser_profile_id);
 create index idx_guess_scores_profile on guess_scores(profile_id);
+create index idx_inside_jokes_room on inside_jokes(room_id);
+create index idx_surprises_room on surprises(room_id);
+create index idx_daily_prompts_room on daily_prompts(room_id);
+create index idx_daily_responses_prompt on daily_responses(daily_prompt_id);
 
 -- =========================================================
 -- Row Level Security
@@ -196,6 +245,10 @@ alter table bet_balances enable row level security;
 alter table bets enable row level security;
 alter table guess_results enable row level security;
 alter table guess_scores enable row level security;
+alter table inside_jokes enable row level security;
+alter table surprises enable row level security;
+alter table daily_prompts enable row level security;
+alter table daily_responses enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -353,6 +406,66 @@ create policy "guess_results: room members read" on guess_results
 create policy "guess_scores: members read" on guess_scores
   for select using (
     exists (select 1 from room_members m where m.room_id = guess_scores.room_id and m.profile_id = auth.uid())
+  );
+
+-- OUR INONG™ THING: any room member can read or add — shared culture,
+-- jointly owned. No update/delete for now (entries are permanent by design).
+create policy "inside_jokes: members read" on inside_jokes
+  for select using (
+    exists (select 1 from room_members m where m.room_id = inside_jokes.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "inside_jokes: members create" on inside_jokes
+  for insert with check (
+    created_by = auth.uid()
+    and exists (select 1 from room_members m where m.room_id = inside_jokes.room_id and m.profile_id = auth.uid())
+  );
+
+-- SURPRISE ME: members read/create, and can update status (mark done/skipped)
+create policy "surprises: members read" on surprises
+  for select using (
+    exists (select 1 from room_members m where m.room_id = surprises.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "surprises: members create" on surprises
+  for insert with check (
+    created_by = auth.uid()
+    and exists (select 1 from room_members m where m.room_id = surprises.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "surprises: members update" on surprises
+  for update using (
+    exists (select 1 from room_members m where m.room_id = surprises.room_id and m.profile_id = auth.uid())
+  );
+
+-- INONG™ 24: members read/create the daily prompt and their own response
+create policy "daily_prompts: members read" on daily_prompts
+  for select using (
+    exists (select 1 from room_members m where m.room_id = daily_prompts.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "daily_prompts: members create" on daily_prompts
+  for insert with check (
+    exists (select 1 from room_members m where m.room_id = daily_prompts.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "daily_responses: room members read" on daily_responses
+  for select using (
+    exists (
+      select 1 from daily_prompts p
+      join room_members m on m.room_id = p.room_id
+      where p.id = daily_responses.daily_prompt_id and m.profile_id = auth.uid()
+    )
+  );
+
+create policy "daily_responses: self insert" on daily_responses
+  for insert with check (
+    profile_id = auth.uid()
+    and exists (
+      select 1 from daily_prompts p
+      join room_members m on m.room_id = p.room_id
+      where p.id = daily_responses.daily_prompt_id and m.profile_id = auth.uid()
+    )
   );
 
 create policy "responses: room members read" on responses

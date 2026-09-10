@@ -220,37 +220,82 @@ export default function RoomPage() {
       )}
 
       {room.type === "one_on_one" && members.length === 2 && (
-        <div className="mt-8 space-y-3">
-          <button
-            onClick={() => router.push(`/rooms/${room.id}/know-me`)}
-            className="w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
-          >
-            🧠 Know Me
-          </button>
-          <button
-            onClick={() => router.push(`/rooms/${room.id}/bet-on-me`)}
-            className="w-full rounded-full border border-skyblue py-4 font-medium text-skyblue transition hover:bg-skyblue hover:text-ink"
-          >
-            🎯 Bet on Me
-          </button>
-          <button
-            onClick={() => router.push(`/rooms/${room.id}/memories`)}
-            className="w-full rounded-full border border-mute py-4 font-medium text-paper transition hover:border-paper"
-          >
-            🕰️ Our Memories
-          </button>
-          <button
-            onClick={() => router.push(`/rooms/${room.id}/visuals-in-words`)}
-            className="w-full rounded-full border border-mute py-4 font-medium text-paper transition hover:border-paper"
-          >
-            🎨 Visuals in Words
-          </button>
+        <div className="mt-8 space-y-2">
+          {[
+            {
+              href: "know-me",
+              icon: "🧠",
+              label: "Know Me",
+              bestFor: "Best for: discovering how well you actually know each other, one honest question at a time.",
+              accent: "coral",
+            },
+            {
+              href: "bet-on-me",
+              icon: "🎯",
+              label: "Bet on Me",
+              bestFor: "Best for: playful confidence and risk — real stakes, not just facts.",
+              accent: "skyblue",
+            },
+            {
+              href: "memories",
+              icon: "🕰️",
+              label: "Our Memories",
+              bestFor: "Best for: revisiting what you've already discovered and letting it sink in.",
+            },
+            {
+              href: "visuals-in-words",
+              icon: "🎨",
+              label: "Visuals in Words",
+              bestFor: "Best for: seeing how differently you each picture things — or a quick competitive guessing game.",
+            },
+            {
+              href: "our-thing",
+              icon: "✦",
+              label: "Our INONG™ Thing",
+              bestFor: "Best for: building your own private language — jokes, nicknames, stories, kept forever.",
+            },
+            {
+              href: "surprise-me",
+              icon: "🎁",
+              label: "Surprise Me",
+              bestFor: "Best for: spontaneous, low-effort fun — no typing, just do something together right now.",
+            },
+            {
+              href: "daily",
+              icon: "⏳",
+              label: "INONG™ 24",
+              bestFor: "Best for: a daily habit — small, disappearing, keeps you both showing up.",
+            },
+          ].map((exp) => (
+            <button
+              key={exp.href}
+              onClick={() => router.push(`/rooms/${room.id}/${exp.href}`)}
+              className={`w-full rounded-card border px-5 py-3 text-left transition ${
+                exp.accent === "coral"
+                  ? "border-coral bg-coral text-ink hover:opacity-90"
+                  : exp.accent === "skyblue"
+                  ? "border-skyblue text-skyblue hover:bg-skyblue hover:text-ink"
+                  : "border-mute text-paper hover:border-paper"
+              }`}
+            >
+              <p className="font-medium">
+                {exp.icon} {exp.label}
+              </p>
+              <p
+                className={`mt-0.5 text-xs ${
+                  exp.accent === "coral" ? "text-ink/70" : "text-mute"
+                }`}
+              >
+                {exp.bestFor}
+              </p>
+            </button>
+          ))}
         </div>
       )}
 
       {room.type !== "one_on_one" && (
         <p className="mt-8 text-sm text-mute">
-          Group experiences (Our Thing, Friend Court, and more) are coming
+          Group experiences (Our Thing, INONG™ Court, and more) are coming
           soon — for now, start a one-on-one with anyone in this room above.
         </p>
       )}

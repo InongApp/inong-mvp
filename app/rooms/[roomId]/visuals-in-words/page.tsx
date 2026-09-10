@@ -21,6 +21,9 @@ export default function VisualsInWordsChooserPage() {
             Same prompt, two descriptions. No score — just see how
             differently you each picture things.
           </p>
+          <p className="mt-2 text-xs text-coral">
+            Best for: perspective and appreciation, not competition.
+          </p>
         </button>
 
         <button
@@ -31,6 +34,9 @@ export default function VisualsInWordsChooserPage() {
           <p className="mt-1 text-sm text-mute">
             One of you knows what it is. Guess right on the first clue for 3
             points, or ask for a second clue and play it safer for 1.
+          </p>
+          <p className="mt-2 text-xs text-coral">
+            Best for: quick competitive fun with real stakes.
           </p>
         </button>
       </div>

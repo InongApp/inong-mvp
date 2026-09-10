@@ -25,6 +25,7 @@ export default function MemoriesPage() {
   const [friendName, setFriendName] = useState("your Inong");
   const [memories, setMemories] = useState<Memory[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [promotedIds, setPromotedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,6 +100,19 @@ export default function MemoriesPage() {
     setLoading(false);
   }
 
+  async function promoteToOurThing(m: Memory) {
+    if (!userId) return;
+    const { error } = await supabase.from("inside_jokes").insert({
+      room_id: params.roomId,
+      title: m.summary,
+      story: `From ${m.type === "know_me" ? "Know Me" : "Bet on Me"}: "${m.question}" → ${m.selfAnswer}`,
+      created_by: userId,
+    });
+    if (!error) {
+      setPromotedIds((prev) => new Set(prev).add(m.id));
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center text-mute">
@@ -168,6 +182,14 @@ export default function MemoriesPage() {
                       )}
                     </p>
                   )}
+
+                  <button
+                    onClick={() => promoteToOurThing(m)}
+                    disabled={promotedIds.has(m.id)}
+                    className="mt-3 rounded-full border border-mute px-4 py-2 text-xs text-paper transition hover:border-paper disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {promotedIds.has(m.id) ? "✓ Added to Our Thing" : "+ Add to Our Thing"}
+                  </button>
 
                   <p className="mt-4 text-xs uppercase tracking-wide text-mute">
                     Talk about it now

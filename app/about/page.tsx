@@ -7,16 +7,57 @@ type ExperienceStatus = "live" | "soon";
 const EXPERIENCES: {
   name: string;
   tagline: string;
+  bestFor: string;
   status: ExperienceStatus;
 }[] = [
-  { name: "Know Your INONG™", tagline: "How well do you know me? Predict what I'll choose.", status: "live" },
-  { name: "Bet on Me", tagline: "How confident are you in me? Place a bet, then reveal.", status: "live" },
-  { name: "INONG™ Visuals in Words", tagline: "What am I looking at? (text version now — real images with Premium, coming soon)", status: "live" },
-  { name: "Our INONG™ Thing", tagline: "Our jokes, our lingo, our stories.", status: "soon" },
-  { name: "Surprise Me", tagline: "Our random challenges.", status: "soon" },
-  { name: "INONG™ Court", tagline: "Let the friends decide.", status: "soon" },
-  { name: "Our INONG™ Memories", tagline: "Let's revisit our shared history.", status: "live" },
-  { name: "INONG™ 24", tagline: "Our special 24-hour experiences.", status: "soon" },
+  {
+    name: "Know Your INONG™",
+    tagline: "How well do you know me? Predict what I'll choose.",
+    bestFor: "Best for: discovering how well you actually know each other, one honest question at a time.",
+    status: "live",
+  },
+  {
+    name: "Bet on Me",
+    tagline: "How confident are you in me? Place a bet, then reveal.",
+    bestFor: "Best for: playful confidence and risk — real stakes, not just facts.",
+    status: "live",
+  },
+  {
+    name: "INONG™ Visuals in Words",
+    tagline: "What am I looking at? (text version now — real images with Premium, coming soon)",
+    bestFor: "Best for: seeing how differently you each picture things, or a quick competitive guessing game.",
+    status: "live",
+  },
+  {
+    name: "Our INONG™ Thing",
+    tagline: "Our jokes, our lingo, our stories.",
+    bestFor: "Best for: building your own private language — kept forever, added to anytime.",
+    status: "live",
+  },
+  {
+    name: "Surprise Me",
+    tagline: "Our random challenges.",
+    bestFor: "Best for: spontaneous, low-effort fun — no typing, just do something together right now.",
+    status: "live",
+  },
+  {
+    name: "INONG™ Court",
+    tagline: "Let the friends decide.",
+    bestFor: "Best for: settling playful disputes with your circle's help. Opens once Group and Family rooms unlock.",
+    status: "soon",
+  },
+  {
+    name: "Our INONG™ Memories",
+    tagline: "Let's revisit our shared history.",
+    bestFor: "Best for: revisiting what you've already discovered and letting it sink in.",
+    status: "live",
+  },
+  {
+    name: "INONG™ 24",
+    tagline: "Our special 24-hour experiences.",
+    bestFor: "\"Turns the app from something we play sometimes into something we check every day.\"",
+    status: "live",
+  },
 ];
 
 export default function AboutPage() {
@@ -75,23 +116,21 @@ export default function AboutPage() {
 
         <div className="mt-4 space-y-2">
           {EXPERIENCES.map((exp) => (
-            <div
-              key={exp.name}
-              className="flex items-center justify-between rounded-card bg-surface px-4 py-3"
-            >
-              <div>
+            <div key={exp.name} className="rounded-card bg-surface px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-medium text-paper">{exp.name}</p>
-                <p className="mt-0.5 text-xs text-mute">{exp.tagline}</p>
+                {exp.status === "live" ? (
+                  <span className="shrink-0 rounded-full bg-coral px-3 py-1 text-xs font-medium text-ink">
+                    Live
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-full border border-mute px-3 py-1 text-xs text-mute">
+                    Under construction
+                  </span>
+                )}
               </div>
-              {exp.status === "live" ? (
-                <span className="shrink-0 rounded-full bg-coral px-3 py-1 text-xs font-medium text-ink">
-                  Live
-                </span>
-              ) : (
-                <span className="shrink-0 rounded-full border border-mute px-3 py-1 text-xs text-mute">
-                  Under construction
-                </span>
-              )}
+              <p className="mt-0.5 text-xs text-mute">{exp.tagline}</p>
+              <p className="mt-1 text-xs text-coral">{exp.bestFor}</p>
             </div>
           ))}
         </div>
