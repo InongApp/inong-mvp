@@ -34,6 +34,8 @@ export default function PremiumNudge({
   onClose: () => void;
 }) {
   const [joined, setJoined] = useState(false);
+  const [waitlistId, setWaitlistId] = useState<string | null>(null);
+  const [priceFeedback, setPriceFeedback] = useState<string | null>(null);
   const copy = FEATURE_COPY[feature];
 
   async function joinWaitlist() {
@@ -41,11 +43,25 @@ export default function PremiumNudge({
       data: { session },
     } = await supabase.auth.getSession();
     if (!session?.user) return;
-    await supabase.from("premium_interest").insert({
-      profile_id: session.user.id,
-      feature,
-    });
+    const { data } = await supabase
+      .from("premium_interest")
+      .insert({
+        profile_id: session.user.id,
+        feature,
+      })
+      .select("id")
+      .single();
     setJoined(true);
+    if (data) setWaitlistId(data.id);
+  }
+
+  async function submitPriceFeedback(value: "fair" | "too_much" | "pay_more") {
+    setPriceFeedback(value);
+    if (!waitlistId) return;
+    await supabase
+      .from("premium_interest")
+      .update({ price_feedback: value })
+      .eq("id", waitlistId);
   }
 
   return (
@@ -80,9 +96,40 @@ export default function PremiumNudge({
         </div>
 
         {joined ? (
-          <p className="mt-6 text-center text-sm text-coral">
-            You're on the list — we'll let you know the moment it's ready. 🎉
-          </p>
+          priceFeedback ? (
+            <p className="mt-6 text-center text-sm text-coral">
+              Thanks — that helps us get this right. 🎉
+            </p>
+          ) : (
+            <div className="mt-6">
+              <p className="text-center text-sm text-coral">
+                You're on the list! One quick question —
+              </p>
+              <p className="mt-2 text-center text-sm text-paper">
+                Would R69/month feel fair for this?
+              </p>
+              <div className="mt-4 space-y-2">
+                <button
+                  onClick={() => submitPriceFeedback("fair")}
+                  className="w-full rounded-full border border-mute py-3 text-sm text-paper transition hover:border-coral"
+                >
+                  👍 Yes, that's fair
+                </button>
+                <button
+                  onClick={() => submitPriceFeedback("too_much")}
+                  className="w-full rounded-full border border-mute py-3 text-sm text-paper transition hover:border-coral"
+                >
+                  😬 That feels like a lot
+                </button>
+                <button
+                  onClick={() => submitPriceFeedback("pay_more")}
+                  className="w-full rounded-full border border-mute py-3 text-sm text-paper transition hover:border-coral"
+                >
+                  💰 I'd pay more than that
+                </button>
+              </div>
+            </div>
+          )
         ) : (
           <button
             onClick={joinWaitlist}
@@ -101,4 +148,3 @@ export default function PremiumNudge({
     </div>
   );
 }
-
