@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { APP_PERSONAS, DIFFICULTY_LABEL, Difficulty } from "@/lib/digitalFriendPersonas";
+import PremiumNudge from "@/components/PremiumNudge";
 
 type Mode = "know_me" | "bet_on_me";
 
@@ -12,6 +13,7 @@ export default function DigitalFriendSetupPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const [personaChoice, setPersonaChoice] = useState<string | null>(null); // app preset key, or "custom"
+  const [showNudge, setShowNudge] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customTraits, setCustomTraits] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
@@ -160,7 +162,7 @@ export default function DigitalFriendSetupPage() {
           ))}
 
           <button
-            onClick={() => setPersonaChoice("custom")}
+            onClick={() => setShowNudge(true)}
             className={`w-full rounded-card border border-dashed px-4 py-3 text-left ${
               personaChoice === "custom"
                 ? "border-coral"
@@ -176,6 +178,16 @@ export default function DigitalFriendSetupPage() {
               simulation of them specifically.
             </p>
           </button>
+
+          {showNudge && (
+            <PremiumNudge
+              feature="digital_friend_custom"
+              onClose={() => {
+                setShowNudge(false);
+                setPersonaChoice("custom");
+              }}
+            />
+          )}
 
           {personaChoice === "custom" && (
             <div className="rounded-card bg-surface px-4 py-4">

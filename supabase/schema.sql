@@ -282,6 +282,15 @@ create table comment_reads (
   primary key (room_id, profile_id, experience_href)
 );
 
+-- PREMIUM_INTEREST: tracks who's tapped "notify me" on a premium nudge.
+-- No billing exists yet — this is purely a waitlist signal for launch.
+create table premium_interest (
+  id uuid primary key default uuid_generate_v4(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  feature text not null, -- which nudge they tapped from, e.g. 'visuals_images', 'digital_friend_custom', 'attachments'
+  created_at timestamptz not null default now()
+);
+
 create table room_activity (
   room_id uuid not null references rooms(id) on delete cascade,
   profile_id uuid not null references profiles(id) on delete cascade,
@@ -369,6 +378,7 @@ alter table just_because_notes enable row level security;
 alter table milestones_seen enable row level security;
 alter table room_activity enable row level security;
 alter table comment_reads enable row level security;
+alter table premium_interest enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -665,6 +675,12 @@ create policy "comment_reads: self upsert" on comment_reads
 
 create policy "comment_reads: self update" on comment_reads
   for update using (profile_id = auth.uid());
+
+create policy "premium_interest: self insert" on premium_interest
+  for insert with check (profile_id = auth.uid());
+
+create policy "premium_interest: self read" on premium_interest
+  for select using (profile_id = auth.uid());
 
 create policy "responses: room members read" on responses
   for select using (

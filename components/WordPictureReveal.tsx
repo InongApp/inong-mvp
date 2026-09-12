@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import PremiumNudge from "@/components/PremiumNudge";
+
 export default function WordPictureReveal({
   prompt,
   myDescription,
@@ -11,6 +14,8 @@ export default function WordPictureReveal({
   friendDescription: string;
   friendName: string;
 }) {
+  const [showNudge, setShowNudge] = useState(false);
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
       <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-coral text-3xl">
@@ -41,6 +46,16 @@ export default function WordPictureReveal({
         No right answer here — just two different ways of seeing the same
         thing.
       </p>
+
+      <button
+        onClick={() => setShowNudge(true)}
+        className="mt-4 text-xs text-coral hover:underline"
+      >
+        ✨ See this as an actual image (Premium)
+      </button>
+      {showNudge && (
+        <PremiumNudge feature="visuals_images" onClose={() => setShowNudge(false)} />
+      )}
     </div>
   );
 }

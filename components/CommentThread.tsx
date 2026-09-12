@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { QUICK_EMOJIS } from "@/lib/quickEmojis";
+import PremiumNudge from "@/components/PremiumNudge";
 
 type Comment = { id: string; profile_id: string; message: string };
 
@@ -24,6 +25,7 @@ export default function CommentThread({
   const [comments, setComments] = useState<Comment[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [showNudge, setShowNudge] = useState(false);
 
   const column = experienceId
     ? "experience_id"
@@ -107,6 +109,13 @@ export default function CommentThread({
           className="flex-1 rounded-full bg-surface px-4 py-2 text-sm text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
         />
         <button
+          onClick={() => setShowNudge(true)}
+          className="rounded-full bg-surface px-3 py-2 text-mute transition hover:text-paper"
+          title="Photos & voice notes (Premium)"
+        >
+          📎
+        </button>
+        <button
           onClick={() => send()}
           disabled={sending || !text.trim()}
           className="rounded-full bg-coral px-4 py-2 text-sm font-medium text-ink disabled:opacity-50"
@@ -114,6 +123,9 @@ export default function CommentThread({
           Send
         </button>
       </div>
+      {showNudge && (
+        <PremiumNudge feature="attachments" onClose={() => setShowNudge(false)} />
+      )}
     </div>
   );
 }
