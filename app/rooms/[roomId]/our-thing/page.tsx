@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import CommentThread from "@/components/CommentThread";
 
 type Entry = {
   id: string;
@@ -175,9 +176,19 @@ export default function OurThingPage() {
                 </p>
               </button>
               {isOpen && (
-                <p className="mt-3 border-t border-ink/10 pt-3 text-sm text-paper">
-                  {entry.story}
-                </p>
+                <div className="mt-3 border-t border-ink/10 pt-3">
+                  <p className="text-sm text-paper">{entry.story}</p>
+                  {userId && (
+                    <CommentThread
+                      insideJokeId={entry.id}
+                      userId={userId}
+                      friendName={
+                        Object.entries(names).find(([id]) => id !== userId)?.[1] ??
+                        "your Inong"
+                      }
+                    />
+                  )}
+                </div>
               )}
             </div>
           );

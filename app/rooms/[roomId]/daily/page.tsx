@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useRoomSession } from "@/lib/useRoomSession";
 import { notify } from "@/lib/notifyClient";
+import CommentThread from "@/components/CommentThread";
 
 function todayLocalDate() {
   const d = new Date();
@@ -198,6 +199,11 @@ export default function Daily24Page() {
             </div>
           </div>
           <p className="mt-6 text-sm text-mute">Back tomorrow for a new one.</p>
+          <CommentThread
+            dailyPromptId={prompt.id}
+            userId={userId!}
+            friendName={friendName}
+          />
         </div>
       ) : myAnswer ? (
         <div className="flex flex-1 flex-col items-center justify-center text-center">
@@ -207,6 +213,13 @@ export default function Daily24Page() {
               ? `Time ran out before ${friendName} answered — this one's gone.`
               : `Waiting on ${friendName}, before time runs out.`}
           </p>
+          {!expired && (
+            <CommentThread
+              dailyPromptId={prompt.id}
+              userId={userId!}
+              friendName={friendName}
+            />
+          )}
         </div>
       ) : expired ? (
         <div className="flex flex-1 flex-col items-center justify-center text-center">

@@ -2,15 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { QUICK_EMOJIS } from "@/lib/quickEmojis";
 
 type Comment = { id: string; profile_id: string; message: string };
 
 export default function CommentThread({
   experienceId,
+  surpriseId,
+  insideJokeId,
+  dailyPromptId,
   userId,
   friendName,
 }: {
-  experienceId: string;
+  experienceId?: string;
+  surpriseId?: string;
+  insideJokeId?: string;
+  dailyPromptId?: string;
   userId: string;
   friendName: string;
 }) {
@@ -18,34 +25,48 @@ export default function CommentThread({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
+  const column = experienceId
+    ? "experience_id"
+    : surpriseId
+    ? "surprise_id"
+    : insideJokeId
+    ? "inside_joke_id"
+    : "daily_prompt_id";
+  const subjectId = experienceId ?? surpriseId ?? insideJokeId ?? dailyPromptId;
+
   useEffect(() => {
+    if (!subjectId) return;
     load();
     const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [experienceId]);
+  }, [subjectId]);
 
   async function load() {
+    if (!subjectId) return;
     const { data } = await supabase
       .from("experience_comments")
       .select("id, profile_id, message")
-      .eq("experience_id", experienceId)
+      .eq(column, subjectId)
       .order("created_at", { ascending: true });
     setComments(data ?? []);
   }
 
-  async function send() {
-    if (!text.trim()) return;
+  async function send(override?: string) {
+    const message = (override ?? text).trim();
+    if (!message || !subjectId) return;
     setSending(true);
     await supabase.from("experience_comments").insert({
-      experience_id: experienceId,
+      [column]: subjectId,
       profile_id: userId,
-      message: text.trim(),
+      message,
     });
-    setText("");
+    if (!override) setText("");
     setSending(false);
     load();
   }
+
+  if (!subjectId) return null;
 
   return (
     <div className="mt-6 w-full">
@@ -65,6 +86,18 @@ export default function CommentThread({
           ))}
         </div>
       )}
+      <div className="mb-2 flex gap-1 overflow-x-auto pb-1">
+        {QUICK_EMOJIS.map((emoji) => (
+          <button
+            key={emoji}
+            onClick={() => send(emoji)}
+            disabled={sending}
+            className="shrink-0 rounded-full bg-surface px-2.5 py-1.5 text-lg transition hover:bg-surface/70 disabled:opacity-50"
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
       <div className="flex items-center gap-2">
         <input
           value={text}
@@ -74,7 +107,7 @@ export default function CommentThread({
           className="flex-1 rounded-full bg-surface px-4 py-2 text-sm text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
         />
         <button
-          onClick={send}
+          onClick={() => send()}
           disabled={sending || !text.trim()}
           className="rounded-full bg-coral px-4 py-2 text-sm font-medium text-ink disabled:opacity-50"
         >

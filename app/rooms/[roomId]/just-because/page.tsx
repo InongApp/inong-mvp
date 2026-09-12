@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { notify } from "@/lib/notifyClient";
+import { QUICK_EMOJIS } from "@/lib/quickEmojis";
 
 type Note = {
   id: string;
@@ -94,10 +95,10 @@ export default function JustBecausePage() {
     setLoading(false);
   }
 
-  async function send() {
+  async function send(override?: string) {
     if (!userId || sending) return;
     setSending(true);
-    const messageToSend = text.trim(); // empty string is a valid, complete send
+    const messageToSend = (override ?? text).trim(); // empty string is a valid, complete send
     try {
       const { data: inserted, error } = await supabase
         .from("just_because_notes")
@@ -110,7 +111,7 @@ export default function JustBecausePage() {
         .single();
 
       if (!error && inserted) {
-        setText("");
+        if (!override) setText("");
         // Optimistic append — don't wait on the realtime round-trip for
         // our own message to show up. The realtime handler dedupes this
         // by id if its event arrives too.
@@ -187,20 +188,35 @@ export default function JustBecausePage() {
         <div ref={bottomRef} />
       </div>
 
-      <div className="mt-4 flex gap-2">
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Say something... or leave it blank"
-          className="flex-1 rounded-full bg-surface px-4 py-3 text-sm text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
-        />
-        <button
-          onClick={send}
-          disabled={sending}
-          className="rounded-full bg-coral px-5 py-3 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
-        >
-          ❤️
-        </button>
+      <div className="mt-4">
+        <div className="mb-2 flex gap-1 overflow-x-auto pb-1">
+          {QUICK_EMOJIS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => send(emoji)}
+              disabled={sending}
+              className="shrink-0 rounded-full bg-surface px-2.5 py-1.5 text-lg transition hover:bg-surface/70 disabled:opacity-50"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder="Say something... or leave it blank"
+            className="flex-1 rounded-full bg-surface px-4 py-3 text-sm text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
+          />
+          <button
+            onClick={() => send()}
+            disabled={sending}
+            className="rounded-full bg-coral px-5 py-3 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </div>
   );

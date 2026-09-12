@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { randomChallenge } from "@/lib/challenges";
+import CommentThread from "@/components/CommentThread";
 
 type Surprise = {
   id: string;
@@ -20,6 +21,7 @@ export default function SurpriseOrDarePage() {
   const isDareMode = params.mode === "dare";
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [friendName, setFriendName] = useState("your Inong");
   const [current, setCurrent] = useState<Surprise | null>(null);
   const [doneCount, setDoneCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -57,6 +59,13 @@ export default function SurpriseOrDarePage() {
       return;
     }
     setUserId(session.user.id);
+
+    const { data: memberRows } = await supabase
+      .from("room_members")
+      .select("profile_id, profiles(display_name)")
+      .eq("room_id", params.roomId);
+    const other: any = (memberRows ?? []).find((m: any) => m.profile_id !== session.user.id);
+    if (other) setFriendName(other.profiles?.display_name ?? "your Inong");
 
     const { data: all } = await supabase
       .from("surprises")
@@ -223,6 +232,14 @@ export default function SurpriseOrDarePage() {
               Skip this one 🙈
             </button>
           </div>
+
+          {userId && (
+            <CommentThread
+              surpriseId={current.id}
+              userId={userId}
+              friendName={friendName}
+            />
+          )}
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center text-center">

@@ -268,6 +268,17 @@ create table milestones_seen (
   unique (room_id, milestone_key)
 );
 
+-- ROOM ACTIVITY: lightweight presence signal so each person can see when
+-- their Inong moves to a different experience, and jump there directly —
+-- without this, experiences have no way to "talk to each other" at all.
+create table room_activity (
+  room_id uuid not null references rooms(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  experience_href text not null,
+  updated_at timestamptz not null default now(),
+  primary key (room_id, profile_id)
+);
+
 create table responses (
   id uuid primary key default uuid_generate_v4(),
   experience_id uuid not null references experiences(id) on delete cascade,
@@ -280,10 +291,19 @@ create table responses (
 
 create table experience_comments (
   id uuid primary key default uuid_generate_v4(),
-  experience_id uuid not null references experiences(id) on delete cascade,
+  experience_id uuid references experiences(id) on delete cascade,
+  surprise_id uuid references surprises(id) on delete cascade,
+  inside_joke_id uuid references inside_jokes(id) on delete cascade,
+  daily_prompt_id uuid references daily_prompts(id) on delete cascade,
   profile_id uuid not null references profiles(id) on delete cascade,
   message text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint exactly_one_subject check (
+    (case when experience_id is not null then 1 else 0 end) +
+    (case when surprise_id is not null then 1 else 0 end) +
+    (case when inside_joke_id is not null then 1 else 0 end) +
+    (case when daily_prompt_id is not null then 1 else 0 end) = 1
+  )
 );
 
 create table push_subscriptions (
@@ -299,6 +319,9 @@ create index idx_room_members_profile on room_members(profile_id);
 create index idx_experiences_room on experiences(room_id);
 create index idx_responses_experience on responses(experience_id);
 create index idx_comments_experience on experience_comments(experience_id);
+create index idx_comments_surprise on experience_comments(surprise_id);
+create index idx_comments_inside_joke on experience_comments(inside_joke_id);
+create index idx_comments_daily_prompt on experience_comments(daily_prompt_id);
 create index idx_bets_profile on bets(profile_id);
 create index idx_bet_balances_profile on bet_balances(profile_id);
 create index idx_guess_results_guesser on guess_results(guesser_profile_id);
@@ -333,6 +356,7 @@ alter table digital_friend_rounds enable row level security;
 alter table digital_friend_balances enable row level security;
 alter table just_because_notes enable row level security;
 alter table milestones_seen enable row level security;
+alter table room_activity enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -608,6 +632,19 @@ create policy "milestones: members insert" on milestones_seen
     exists (select 1 from room_members m where m.room_id = milestones_seen.room_id and m.profile_id = auth.uid())
   );
 
+-- ROOM ACTIVITY: members can read anyone's row in their room (needed to see
+-- where their Inong currently is), but only ever write their own.
+create policy "room_activity: members read" on room_activity
+  for select using (
+    exists (select 1 from room_members m where m.room_id = room_activity.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "room_activity: self upsert" on room_activity
+  for insert with check (profile_id = auth.uid());
+
+create policy "room_activity: self update" on room_activity
+  for update using (profile_id = auth.uid());
+
 create policy "responses: room members read" on responses
   for select using (
     exists (
@@ -634,15 +671,47 @@ create policy "experience_comments: room members read" on experience_comments
       join room_members m on m.room_id = e.room_id
       where e.id = experience_comments.experience_id and m.profile_id = auth.uid()
     )
+    or exists (
+      select 1 from surprises s
+      join room_members m on m.room_id = s.room_id
+      where s.id = experience_comments.surprise_id and m.profile_id = auth.uid()
+    )
+    or exists (
+      select 1 from inside_jokes j
+      join room_members m on m.room_id = j.room_id
+      where j.id = experience_comments.inside_joke_id and m.profile_id = auth.uid()
+    )
+    or exists (
+      select 1 from daily_prompts p
+      join room_members m on m.room_id = p.room_id
+      where p.id = experience_comments.daily_prompt_id and m.profile_id = auth.uid()
+    )
   );
 
 create policy "experience_comments: self insert" on experience_comments
   for insert with check (
     profile_id = auth.uid()
-    and exists (
-      select 1 from experiences e
-      join room_members m on m.room_id = e.room_id
-      where e.id = experience_comments.experience_id and m.profile_id = auth.uid()
+    and (
+      exists (
+        select 1 from experiences e
+        join room_members m on m.room_id = e.room_id
+        where e.id = experience_comments.experience_id and m.profile_id = auth.uid()
+      )
+      or exists (
+        select 1 from surprises s
+        join room_members m on m.room_id = s.room_id
+        where s.id = experience_comments.surprise_id and m.profile_id = auth.uid()
+      )
+      or exists (
+        select 1 from inside_jokes j
+        join room_members m on m.room_id = j.room_id
+        where j.id = experience_comments.inside_joke_id and m.profile_id = auth.uid()
+      )
+      or exists (
+        select 1 from daily_prompts p
+        join room_members m on m.room_id = p.room_id
+        where p.id = experience_comments.daily_prompt_id and m.profile_id = auth.uid()
+      )
     )
   );
 
