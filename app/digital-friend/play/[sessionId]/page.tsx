@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import WagerSelector from "@/components/WagerSelector";
+import { APP_PERSONAS } from "@/lib/digitalFriendPersonas";
 
 const SESSION_LENGTH = 10;
 
@@ -135,7 +136,7 @@ export default function DigitalFriendPlayPage() {
       });
       const aData = await aRes.json();
       if (!aData.answer) {
-        setError("Couldn't get a response from your Digital Friend — try again.");
+        setError("Couldn't get a response — try again.");
         return;
       }
 
@@ -255,13 +256,15 @@ export default function DigitalFriendPlayPage() {
   }
 
   const isBet = session.mode === "bet_on_me";
+  const isPreset = APP_PERSONAS.some((p) => p.key === session.persona_key);
+  const displayName = isPreset ? `Karabo (${session.persona_name})` : session.persona_name;
   const current = rounds[rounds.length - 1];
   const sessionDone = rounds.filter((r) => r.resolved).length >= SESSION_LENGTH;
 
   const scoreboard = (
     <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
       <p>
-        🤖 {session.persona_name} · {session.difficulty}
+        🤖 {displayName} · {session.difficulty}
       </p>
       {isBet && <p className="mt-1">Balance: {balance} points</p>}
     </div>
@@ -282,20 +285,20 @@ export default function DigitalFriendPlayPage() {
           🤖
         </div>
         <p className="text-sm uppercase tracking-wide text-mute">
-          Practice session complete
+          That's a wrap with {displayName}
         </p>
         <p className="font-serif mt-2 text-2xl font-semibold">
           {isBet ? `${netPoints >= 0 ? "+" : ""}${netPoints} points` : `${correctCount}/${SESSION_LENGTH} correct`}
         </p>
         <p className="mt-3 max-w-xs text-mute">
-          Remember: this measures how well you read {session.persona_name} —
-          a simulation, not your real friend.
+          A fun read on {displayName} — not a verdict on how well you know
+          your real Inong.
         </p>
         <button
           onClick={() => router.push(`/digital-friend`)}
           className="mt-8 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
         >
-          Practice again
+          Play again
         </button>
         <button
           onClick={() => router.push(`/`)}
@@ -323,7 +326,7 @@ export default function DigitalFriendPlayPage() {
               {current.correct ? (isBet ? "🔥" : <span className="text-white">✓</span>) : "😂"}
             </div>
             <p className="text-sm text-mute">
-              {session.persona_name} said: <span className="text-paper">{current.digital_answer}</span>
+              {displayName} said: <span className="text-paper">{current.digital_answer}</span>
             </p>
             <p className="mt-1 text-sm text-mute">
               You said: <span className="text-paper">{current.player_answer}</span>
@@ -371,7 +374,7 @@ export default function DigitalFriendPlayPage() {
       {scoreboard}
       <div className="flex flex-1 flex-col justify-center">
         <p className="text-sm uppercase tracking-wide text-mute">
-          {isBet ? `Bet on ${session.persona_name}` : `Guess ${session.persona_name}'s answer`}
+          {isBet ? `Bet on ${displayName}` : `Guess ${displayName}'s answer`}
         </p>
         <h1 className="font-serif mt-3 text-2xl font-semibold leading-snug">
           {current.question}

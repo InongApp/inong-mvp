@@ -103,17 +103,17 @@ export default function DigitalFriendSetupPage() {
       </button>
 
       <h1 className="font-serif mt-4 text-2xl font-semibold">
-        🤖 Digital Friend
+        🤖 Meet Karabo
       </h1>
       <p className="mt-2 text-sm text-mute">
-        Practice solo against a simulated personality. This never touches
-        your real relationship's history — it's a training space, not a
-        replacement for the real thing.
+        Your Digital Friend — a personality of your own choosing, just
+        between you and Karabo. Your real Inong&rsquo;s story stays
+        completely untouched.
       </p>
 
       {/* ---------- Mode ---------- */}
       <div className="mt-6">
-        <p className="text-xs uppercase tracking-wide text-mute">Practice mode</p>
+        <p className="text-xs uppercase tracking-wide text-mute">How do you want to play?</p>
         <div className="mt-2 flex gap-2">
           <button
             onClick={() => setMode("know_me")}
@@ -141,7 +141,7 @@ export default function DigitalFriendSetupPage() {
       {/* ---------- Persona ---------- */}
       <div className="mt-6">
         <p className="text-xs uppercase tracking-wide text-mute">
-          Choose your Digital Friend
+          Which side of Karabo do you want to meet?
         </p>
         <div className="mt-2 space-y-2">
           {APP_PERSONAS.map((p) => (
@@ -228,7 +228,7 @@ export default function DigitalFriendSetupPage() {
         disabled={!mode || !personaChoice || starting}
         className="mt-8 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
       >
-        {starting ? "Setting up..." : "Start practice"}
+        {starting ? "Getting Karabo ready..." : "Let's play"}
       </button>
       {error && <p className="mt-3 text-sm text-coral">{error}</p>}
     </div>

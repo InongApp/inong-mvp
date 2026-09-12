@@ -67,9 +67,9 @@ export default function HomePage() {
           onClick={() => router.push("/digital-friend")}
           className="w-full rounded-card bg-coral px-5 py-4 text-left transition hover:opacity-90"
         >
-          <p className="font-medium text-ink">🤖 Play with Digital Friend</p>
+          <p className="font-medium text-ink">🤖 Play with Karabo</p>
           <p className="mt-0.5 text-xs text-ink/70">
-            Solo practice, right now — no partner needed.
+            Your Digital Friend — for whenever you're curious, no partner needed.
           </p>
         </button>
 

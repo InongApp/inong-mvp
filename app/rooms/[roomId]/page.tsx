@@ -9,6 +9,7 @@ type Room = {
   id: string;
   name: string | null;
   type: "one_on_one" | "inner_circle" | "family";
+  relationship_mode: "romantic" | "soulmate" | "friendship" | null;
   max_members: number | null;
 };
 
@@ -51,7 +52,7 @@ export default function RoomPage() {
 
     const { data: roomData, error: roomErr } = await supabase
       .from("rooms")
-      .select("id, name, type, max_members")
+      .select("id, name, type, relationship_mode, max_members")
       .eq("id", params.roomId)
       .single();
 
@@ -183,7 +184,19 @@ export default function RoomPage() {
 
       <div className="mt-4 flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-wide text-mute">{typeLabel}</p>
+          <p className="text-xs uppercase tracking-wide text-mute">
+            {typeLabel}
+            {room.type === "one_on_one" && (
+              <>
+                {" · "}
+                {room.relationship_mode === "romantic"
+                  ? "❤️ Romantic"
+                  : room.relationship_mode === "soulmate"
+                  ? "✨ Soulmate"
+                  : "🤝 Friendship"}
+              </>
+            )}
+          </p>
           <h1 className="font-serif text-2xl font-semibold">{roomTitle}</h1>
         </div>
         <button

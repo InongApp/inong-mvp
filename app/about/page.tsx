@@ -49,9 +49,9 @@ const EXPERIENCES: {
     href: "surprise-me",
   },
   {
-    name: "🤖 Digital Friend",
-    tagline: "Solo practice against a simulated personality.",
-    bestFor: "Best for: sharpening your instincts anytime — no real partner needed.",
+    name: "🤖 Karabo",
+    tagline: "Your Digital Friend — a personality of your own choosing.",
+    bestFor: "Best for: whenever you're curious, no real partner needed.",
     status: "live",
     href: "digital-friend",
   },

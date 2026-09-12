@@ -36,3 +36,4 @@ export const QUESTIONS: Question[] = [
 export function questionsByType(type: Question["type"]) {
   return QUESTIONS.filter((q) => q.type === type);
 }
+
