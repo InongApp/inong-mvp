@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 type ExperienceStatus = "live" | "soon";
 
@@ -9,59 +11,124 @@ const EXPERIENCES: {
   tagline: string;
   bestFor: string;
   status: ExperienceStatus;
+  href: string | null; // route inside a one-on-one room; null = not directly playable yet
 }[] = [
   {
     name: "Know Your INONG™",
     tagline: "How well do you know me? Predict what I'll choose.",
     bestFor: "Best for: discovering how well you actually know each other, one honest question at a time.",
     status: "live",
+    href: "know-me",
   },
   {
     name: "Bet on Me",
     tagline: "How confident are you in me? Place a bet, then reveal.",
     bestFor: "Best for: playful confidence and risk — real stakes, not just facts.",
     status: "live",
+    href: "bet-on-me",
   },
   {
     name: "INONG™ Visuals in Words",
     tagline: "What am I looking at? (text version now — real images with Premium, coming soon)",
     bestFor: "Best for: seeing how differently you each picture things, or a quick competitive guessing game.",
     status: "live",
+    href: "visuals-in-words",
   },
   {
     name: "Our INONG™ Thing",
     tagline: "Our jokes, our lingo, our stories.",
     bestFor: "Best for: building your own private language — kept forever, added to anytime.",
     status: "live",
+    href: "our-thing",
   },
   {
     name: "Surprise Me",
     tagline: "Our random challenges.",
     bestFor: "Two modes: light Surprises (no pressure, no clock) or bolder Dares (countdown timer, a little more vulnerable).",
     status: "live",
+    href: "surprise-me",
+  },
+  {
+    name: "🤖 Digital Friend",
+    tagline: "Solo practice against a simulated personality.",
+    bestFor: "Best for: sharpening your instincts anytime — no real partner needed.",
+    status: "live",
+    href: "digital-friend",
   },
   {
     name: "INONG™ Court",
     tagline: "Let the friends decide.",
     bestFor: "Best for: settling playful disputes with your circle's help. Opens once Group and Family rooms unlock.",
     status: "soon",
+    href: null,
   },
   {
     name: "Our INONG™ Memories",
     tagline: "Let's revisit our shared history.",
     bestFor: "Best for: revisiting what you've already discovered and letting it sink in.",
     status: "live",
+    href: "memories",
   },
   {
     name: "INONG™ 24",
     tagline: "Our special 24-hour experiences.",
     bestFor: "\"Turns the app from something we play sometimes into something we check every day.\"",
     status: "live",
+    href: "daily",
   },
 ];
 
 export default function AboutPage() {
   const router = useRouter();
+  const [routing, setRouting] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  async function playExperience(href: string) {
+    setRouting(href);
+    setNote(null);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) {
+        router.push("/login");
+        return;
+      }
+
+      // Find one-on-one rooms this person is actually paired in (2 members).
+      const { data: memberRows } = await supabase
+        .from("room_members")
+        .select("room_id, rooms!inner(id, type)")
+        .eq("profile_id", session.user.id)
+        .eq("rooms.type", "one_on_one");
+
+      const roomIds = (memberRows ?? []).map((m: any) => m.room_id);
+      let pairedRoomIds: string[] = [];
+      if (roomIds.length > 0) {
+        const { data: allMembers } = await supabase
+          .from("room_members")
+          .select("room_id")
+          .in("room_id", roomIds);
+        const counts: Record<string, number> = {};
+        (allMembers ?? []).forEach((m: any) => {
+          counts[m.room_id] = (counts[m.room_id] ?? 0) + 1;
+        });
+        pairedRoomIds = roomIds.filter((id) => counts[id] === 2);
+      }
+
+      if (pairedRoomIds.length === 1) {
+        router.push(`/rooms/${pairedRoomIds[0]}/${href}`);
+      } else if (pairedRoomIds.length === 0) {
+        setNote("You'll need a paired one-on-one room first — let's set one up.");
+        setTimeout(() => router.push("/rooms/new"), 900);
+      } else {
+        setNote("You have a few rooms — pick one, then tap this experience from inside it.");
+        setTimeout(() => router.push("/rooms"), 900);
+      }
+    } finally {
+      setRouting(null);
+    }
+  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -115,25 +182,37 @@ export default function AboutPage() {
         </p>
 
         <div className="mt-4 space-y-2">
-          {EXPERIENCES.map((exp) => (
-            <div key={exp.name} className="rounded-card bg-surface px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium text-paper">{exp.name}</p>
-                {exp.status === "live" ? (
-                  <span className="shrink-0 rounded-full bg-coral px-3 py-1 text-xs font-medium text-ink">
-                    Live
-                  </span>
-                ) : (
-                  <span className="shrink-0 rounded-full border border-mute px-3 py-1 text-xs text-mute">
-                    Under construction
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-xs text-mute">{exp.tagline}</p>
-              <p className="mt-1 text-xs text-coral">{exp.bestFor}</p>
-            </div>
-          ))}
+          {EXPERIENCES.map((exp) => {
+            const clickable = exp.status === "live" && exp.href;
+            const Wrapper = clickable ? "button" : "div";
+            return (
+              <Wrapper
+                key={exp.name}
+                onClick={clickable ? () => playExperience(exp.href!) : undefined}
+                disabled={clickable ? routing !== null : undefined}
+                className={`w-full rounded-card bg-surface px-4 py-3 text-left transition ${
+                  clickable ? "hover:bg-surface/70 active:opacity-80" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium text-paper">{exp.name}</p>
+                  {exp.status === "live" ? (
+                    <span className="shrink-0 rounded-full bg-coral px-3 py-1 text-xs font-medium text-ink">
+                      {routing === exp.href ? "..." : "Live"}
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full border border-mute px-3 py-1 text-xs text-mute">
+                      Under construction
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 text-xs text-mute">{exp.tagline}</p>
+                <p className="mt-1 text-xs text-coral">{exp.bestFor}</p>
+              </Wrapper>
+            );
+          })}
         </div>
+        {note && <p className="mt-3 text-center text-xs text-mute">{note}</p>}
 
         <img
           src="/about/inong-experiences.jpg"

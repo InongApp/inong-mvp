@@ -175,7 +175,7 @@ export default function RoomPage() {
   return (
     <div className="flex flex-1 flex-col">
       <button
-        onClick={() => router.push("/")}
+        onClick={() => router.push("/rooms")}
         className="self-start text-sm text-mute hover:text-paper"
       >
         ← All rooms
@@ -265,12 +265,6 @@ export default function RoomPage() {
               icon: "⏳",
               label: "INONG™ 24",
               bestFor: "Best for: a daily habit — small, disappearing, keeps you both showing up.",
-            },
-            {
-              href: "digital-friend",
-              icon: "🤖",
-              label: "Digital Friend",
-              bestFor: "Best for: solo practice against a simulated personality — sharpen your instincts anytime.",
             },
           ].map((exp) => (
             <button

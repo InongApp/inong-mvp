@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { APP_PERSONAS, DIFFICULTY_LABEL, Difficulty } from "@/lib/digitalFriendPersonas";
 
 type Mode = "know_me" | "bet_on_me";
 
 export default function DigitalFriendSetupPage() {
-  const params = useParams<{ roomId: string }>();
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
@@ -91,7 +90,7 @@ export default function DigitalFriendSetupPage() {
       return;
     }
 
-    router.push(`/rooms/${params.roomId}/digital-friend/play/${session.id}`);
+    router.push(`/digital-friend/play/${session.id}`);
   }
 
   return (

@@ -5,93 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-type RoomCard = {
-  id: string;
-  type: "one_on_one" | "inner_circle" | "family";
-  title: string;
-  subtitle: string;
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  one_on_one: "One-on-One",
-  inner_circle: "Inner Circle",
-  family: "Family",
-};
-
 export default function HomePage() {
   const router = useRouter();
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
-  const [rooms, setRooms] = useState<RoomCard[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session?.user));
   }, []);
 
-  async function load() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user) {
-      setLoggedIn(false);
-      setLoading(false);
-      return;
-    }
-    setLoggedIn(true);
-    const userId = session.user.id;
-
-    const { data: myMemberships } = await supabase
-      .from("room_members")
-      .select("room_id, rooms(id, name, type, max_members)")
-      .eq("profile_id", userId);
-
-    const roomIds = (myMemberships ?? []).map((m: any) => m.room_id);
-    if (roomIds.length === 0) {
-      setRooms([]);
-      setLoading(false);
-      return;
-    }
-
-    const { data: allMembers } = await supabase
-      .from("room_members")
-      .select("room_id, profile_id, profiles(display_name)")
-      .in("room_id", roomIds);
-
-    const cards: RoomCard[] = (myMemberships ?? []).map((m: any) => {
-      const r = m.rooms;
-      const membersOfRoom = (allMembers ?? []).filter(
-        (x: any) => x.room_id === r.id
-      );
-
-      if (r.type === "one_on_one") {
-        const partner: any = membersOfRoom.find(
-          (x: any) => x.profile_id !== userId
-        );
-        return {
-          id: r.id,
-          type: r.type,
-          title: partner?.profiles?.display_name ?? "Waiting for your Inong",
-          subtitle: "One-on-One",
-        };
-      }
-
-      return {
-        id: r.id,
-        type: r.type,
-        title: r.name ?? TYPE_LABEL[r.type],
-        subtitle: `${TYPE_LABEL[r.type]} · ${membersOfRoom.length} member${
-          membersOfRoom.length === 1 ? "" : "s"
-        }`,
-      };
-    });
-
-    setRooms(cards);
-    setLoading(false);
-  }
-
-  if (loading) {
+  if (loggedIn === null) {
     return (
       <div className="flex flex-1 items-center justify-center text-mute">
         Loading...
@@ -99,6 +21,7 @@ export default function HomePage() {
     );
   }
 
+  // ---------- Logged out: public landing ----------
   if (!loggedIn) {
     return (
       <div className="flex flex-1 flex-col justify-between">
@@ -130,61 +53,66 @@ export default function HomePage() {
     );
   }
 
-  if (rooms.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col justify-between">
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <h1 className="font-serif text-2xl font-semibold">
-            No rooms yet
-          </h1>
-          <p className="mt-4 max-w-xs text-mute">
-            Start a One-on-One, or create an Inner Circle or Family room to
-            invite more people.
+  // ---------- Logged in: Home — where every session actually starts ----------
+  return (
+    <div className="flex flex-1 flex-col">
+      <img
+        src="/home/hero-mego-dego.jpg"
+        alt="Play INONG — just 15 minutes to talk, laugh, discover, reconnect"
+        className="w-full rounded-card"
+      />
+
+      <div className="mt-6 space-y-2">
+        <button
+          onClick={() => router.push("/digital-friend")}
+          className="w-full rounded-card bg-coral px-5 py-4 text-left transition hover:opacity-90"
+        >
+          <p className="font-medium text-ink">🤖 Play with Digital Friend</p>
+          <p className="mt-0.5 text-xs text-ink/70">
+            Solo practice, right now — no partner needed.
           </p>
-        </div>
+        </button>
 
         <button
           onClick={() => router.push("/rooms/new")}
-          className="w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
+          className="w-full rounded-card border border-skyblue px-5 py-4 text-left text-skyblue transition hover:bg-skyblue hover:text-ink"
         >
-          + New room
+          <p className="font-medium">👤 Invite a One-on-One Player</p>
+          <p className="mt-0.5 text-xs opacity-80">
+            Generate an invite and send it to your Inong.
+          </p>
         </button>
-        <Link
-          href="/about"
-          className="mt-3 block text-center text-sm text-mute hover:text-paper"
-        >
-          About INONG™ & how to play
-        </Link>
-      </div>
-    );
-  }
 
-  return (
-    <div className="flex flex-1 flex-col">
-      <h1 className="font-serif text-2xl font-semibold">Your rooms</h1>
+        <div className="w-full rounded-card border border-mute px-5 py-4 text-left text-mute opacity-60">
+          <div className="flex items-center justify-between">
+            <p className="font-medium">👥 Generate Group Invite</p>
+            <span className="shrink-0 rounded-full border border-mute px-2 py-0.5 text-[10px] uppercase tracking-wide">
+              Unlocks soon
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs">Up to 12 close people, plus you.</p>
+        </div>
 
-      <div className="mt-6 flex-1 space-y-3">
-        {rooms.map((r) => (
-          <button
-            key={r.id}
-            onClick={() => router.push(`/rooms/${r.id}`)}
-            className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-coral"
-          >
-            <p className="font-serif text-lg text-paper">{r.title}</p>
-            <p className="mt-1 text-sm text-mute">{r.subtitle}</p>
-          </button>
-        ))}
+        <div className="w-full rounded-card border border-mute px-5 py-4 text-left text-mute opacity-60">
+          <div className="flex items-center justify-between">
+            <p className="font-medium">👨‍👩‍👧 Generate Family Invite</p>
+            <span className="shrink-0 rounded-full border border-mute px-2 py-0.5 text-[10px] uppercase tracking-wide">
+              Unlocks soon
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs">Unlimited members.</p>
+        </div>
       </div>
 
-      <button
-        onClick={() => router.push("/rooms/new")}
-        className="mt-6 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
+      <Link
+        href="/rooms"
+        className="mt-6 block text-center text-sm text-coral hover:underline"
       >
-        + New room
-      </button>
+        📋 My Rooms
+      </Link>
       <Link
         href="/about"
-        className="mt-3 block text-center text-sm text-mute hover:text-paper"
+        className="mt-2 block text-center text-sm text-mute hover:text-paper"
       >
         About INONG™ & how to play
       </Link>

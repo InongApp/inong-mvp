@@ -29,7 +29,7 @@ type Round = {
 };
 
 export default function DigitalFriendPlayPage() {
-  const params = useParams<{ roomId: string; sessionId: string }>();
+  const params = useParams<{ sessionId: string }>();
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -245,7 +245,7 @@ export default function DigitalFriendPlayPage() {
       <div className="flex flex-1 flex-col items-center justify-center text-center">
         <p className="text-mute">Session not found.</p>
         <button
-          onClick={() => router.push(`/rooms/${params.roomId}/digital-friend`)}
+          onClick={() => router.push(`/digital-friend`)}
           className="mt-4 rounded-full bg-coral px-6 py-3 font-medium text-ink"
         >
           Start a new session
@@ -292,16 +292,16 @@ export default function DigitalFriendPlayPage() {
           a simulation, not your real friend.
         </p>
         <button
-          onClick={() => router.push(`/rooms/${params.roomId}/digital-friend`)}
+          onClick={() => router.push(`/digital-friend`)}
           className="mt-8 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90"
         >
           Practice again
         </button>
         <button
-          onClick={() => router.push(`/rooms/${params.roomId}`)}
+          onClick={() => router.push(`/`)}
           className="mt-3 w-full rounded-full border border-mute py-4 font-medium text-paper transition hover:border-paper"
         >
-          Back to room
+          Back to Home
         </button>
       </div>
     );
