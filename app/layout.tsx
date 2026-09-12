@@ -46,7 +46,7 @@ export default function RootLayout({
             className="mx-auto h-24 w-auto"
           />
           <p className="mt-1 text-center text-xs uppercase tracking-widest text-mute">
-            Deepen your relationships
+            Put Down the World. Pick Up Each Other.
           </p>
           <div className="mt-4 flex flex-1 flex-col">
             <InstallPrompt />

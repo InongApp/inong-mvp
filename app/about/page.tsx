@@ -37,7 +37,7 @@ const EXPERIENCES: {
   {
     name: "Surprise Me",
     tagline: "Our random challenges.",
-    bestFor: "Best for: spontaneous, low-effort fun — no typing, just do something together right now.",
+    bestFor: "Two modes: light Surprises (no pressure, no clock) or bolder Dares (countdown timer, a little more vulnerable).",
     status: "live",
   },
   {
@@ -76,7 +76,7 @@ export default function AboutPage() {
         About INONG™
       </h1>
       <p className="mt-2 text-center text-sm uppercase tracking-widest text-mute">
-        Deepen your relationships
+        Put Down the World. Pick Up Each Other.
       </p>
 
       {/* ---------- The Inspiration ---------- */}
