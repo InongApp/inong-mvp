@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { checkRoomAgeMilestone, markMilestoneSeen } from "@/lib/milestones";
+import { useUnreadHrefs } from "./layout";
 
 type Member = { profile_id: string; display_name: string };
 type Room = {
@@ -27,6 +28,7 @@ function randomCode() {
 export default function RoomPage() {
   const params = useParams<{ roomId: string }>();
   const router = useRouter();
+  const unreadHrefs = useUnreadHrefs();
   const [userId, setUserId] = useState<string | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -326,8 +328,11 @@ export default function RoomPage() {
                   : "border-mute text-paper hover:border-paper"
               }`}
             >
-              <p className="font-medium">
+              <p className="flex items-center gap-2 font-medium">
                 {exp.icon} {exp.label}
+                {Array.from(unreadHrefs).some(
+                  (h) => h === exp.href || h.startsWith(exp.href + "/")
+                ) && <span className="h-2 w-2 shrink-0 rounded-full bg-coral" />}
               </p>
               <p
                 className={`mt-0.5 text-xs ${

@@ -271,6 +271,17 @@ create table milestones_seen (
 -- ROOM ACTIVITY: lightweight presence signal so each person can see when
 -- their Inong moves to a different experience, and jump there directly —
 -- without this, experiences have no way to "talk to each other" at all.
+-- COMMENT_READS: per-experience read tracking (room-level granularity, not
+-- per-item) — enough to answer "does Know Me have anything new for me?"
+-- without needing a row per individual comment.
+create table comment_reads (
+  room_id uuid not null references rooms(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
+  experience_href text not null,
+  last_read_at timestamptz not null default now(),
+  primary key (room_id, profile_id, experience_href)
+);
+
 create table room_activity (
   room_id uuid not null references rooms(id) on delete cascade,
   profile_id uuid not null references profiles(id) on delete cascade,
@@ -357,6 +368,7 @@ alter table digital_friend_balances enable row level security;
 alter table just_because_notes enable row level security;
 alter table milestones_seen enable row level security;
 alter table room_activity enable row level security;
+alter table comment_reads enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -643,6 +655,15 @@ create policy "room_activity: self upsert" on room_activity
   for insert with check (profile_id = auth.uid());
 
 create policy "room_activity: self update" on room_activity
+  for update using (profile_id = auth.uid());
+
+create policy "comment_reads: self read" on comment_reads
+  for select using (profile_id = auth.uid());
+
+create policy "comment_reads: self upsert" on comment_reads
+  for insert with check (profile_id = auth.uid());
+
+create policy "comment_reads: self update" on comment_reads
   for update using (profile_id = auth.uid());
 
 create policy "responses: room members read" on responses
