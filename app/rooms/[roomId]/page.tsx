@@ -258,13 +258,19 @@ export default function RoomPage() {
               href: "surprise-me",
               icon: "🎁",
               label: "Surprise Me",
-              bestFor: "Best for: spontaneous, low-effort fun — no typing, just do something together right now.",
+              bestFor: "Two modes: light Surprises (no pressure) or bolder Dares (with a timer).",
             },
             {
               href: "daily",
               icon: "⏳",
               label: "INONG™ 24",
               bestFor: "Best for: a daily habit — small, disappearing, keeps you both showing up.",
+            },
+            {
+              href: "digital-friend",
+              icon: "🤖",
+              label: "Digital Friend",
+              bestFor: "Best for: solo practice against a simulated personality — sharpen your instincts anytime.",
             },
           ].map((exp) => (
             <button
