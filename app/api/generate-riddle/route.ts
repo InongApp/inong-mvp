@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getRelevantDiscoveries } from "@/lib/discoveryRelevance";
 
 export async function POST(req: Request) {
   try {
@@ -15,15 +16,10 @@ export async function POST(req: Request) {
 
     let discoveriesContext = "";
     if (roomId) {
-      const { data: discoveries } = await supabaseAdmin
-        .from("discoveries")
-        .select("summary")
-        .eq("room_id", roomId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      if (discoveries && discoveries.length > 0) {
-        discoveriesContext = `\n\nOptionally, you can personalize this using something already known about this relationship (only if it fits naturally):\n${discoveries
-          .map((d: any) => `- ${d.summary}`)
+      const relevant = await getRelevantDiscoveries(roomId, 5);
+      if (relevant.length > 0) {
+        discoveriesContext = `\n\nOptionally, you can personalize this using something already known about this relationship (only if it fits naturally):\n${relevant
+          .map((s) => `- ${s}`)
           .join("\n")}`;
       }
     }

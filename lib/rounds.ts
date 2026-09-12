@@ -1,5 +1,11 @@
 import { supabase } from "@/lib/supabase";
 
+export type ExperienceType =
+  | "know_me"
+  | "bet_on_me"
+  | "visuals_in_words"
+  | "visuals_guess";
+
 // 5 alternating turns per player = 10 total. This is the finite
 // "hanger" unit — deliberate, not a limitation. The Journey (all rounds
 // over time) stays open-ended; only the Round is finite.
@@ -8,6 +14,9 @@ export const ROUND_SIZE = 10;
 // The Relationship Intelligence layer: WHAT KIND of round comes next,
 // not just another random 5 questions. Selection is plain rule-based
 // code — no AI spent deciding this, only on writing the question itself.
+// V2: the choice is now WEIGHTED by real signals from the last round
+// (its emotional tone, and whether response times suggest fatigue) —
+// not a uniform random pick among valid options.
 export const ROUND_TYPES = [
   {
     key: "discover",
@@ -47,8 +56,86 @@ export function roundTypeInfo(key: RoundType | null) {
   return ROUND_TYPES.find((r) => r.key === key) ?? null;
 }
 
+type SignalRound = {
+  tone: string | null;
+  avg_response_seconds: number | null;
+  match_rate: number | null;
+};
+
+async function getRecentSignals(
+  roomId: string,
+  type: ExperienceType
+): Promise<SignalRound[]> {
+  const { data } = await supabase
+    .from("experience_rounds")
+    .select("tone, avg_response_seconds, match_rate")
+    .eq("room_id", roomId)
+    .eq("type", type)
+    .eq("status", "complete")
+    .order("round_number", { ascending: false })
+    .limit(2);
+  return (data as SignalRound[]) ?? [];
+}
+
+function weightCandidates(
+  candidates: RoundType[],
+  signals: SignalRound[]
+): { type: RoundType; weight: number }[] {
+  const [last, prev] = signals;
+  const tone = last?.tone ?? null;
+
+  let fatigueRisk = false;
+  if (
+    last?.avg_response_seconds != null &&
+    prev?.avg_response_seconds != null &&
+    prev.avg_response_seconds > 0
+  ) {
+    fatigueRisk = last.avg_response_seconds > prev.avg_response_seconds * 1.5;
+  }
+
+  const highEngagement =
+    !fatigueRisk && last?.match_rate != null && last.match_rate >= 0.7;
+
+  return candidates.map((type) => {
+    let weight = 1;
+
+    if (fatigueRisk) {
+      if (type === "play" || type === "surprise") weight *= 3;
+      if (type === "deepen" || type === "memory") weight *= 0.3;
+    }
+
+    if (tone === "tense") {
+      if (type === "deepen") weight *= 0.3;
+      if (type === "connection" || type === "play") weight *= 2;
+    }
+
+    if (tone === "warm" || tone === "playful") {
+      if (type === "deepen" || type === "surprise") weight *= 1.7;
+    }
+
+    if (highEngagement && (type === "deepen" || type === "connection")) {
+      weight *= 1.5;
+    }
+
+    return { type, weight };
+  });
+}
+
+function weightedPick(
+  weighted: { type: RoundType; weight: number }[]
+): RoundType {
+  const total = weighted.reduce((sum, w) => sum + w.weight, 0);
+  let r = Math.random() * total;
+  for (const w of weighted) {
+    r -= w.weight;
+    if (r <= 0) return w.type;
+  }
+  return weighted[weighted.length - 1].type;
+}
+
 async function selectNextRoundType(
   roomId: string,
+  type: ExperienceType,
   lastType: RoundType | null
 ): Promise<RoundType> {
   if (!lastType) return "discover"; // round 1 always starts here — nothing to deepen/revisit yet
@@ -63,7 +150,9 @@ async function selectNextRoundType(
     .filter((k) => hasDiscoveries || (k !== "deepen" && k !== "memory")) // nothing to deepen/revisit yet
     .filter((k) => k !== lastType); // never repeat the immediately previous type
 
-  return candidates[Math.floor(Math.random() * candidates.length)];
+  const signals = await getRecentSignals(roomId, type);
+  const weighted = weightCandidates(candidates, signals);
+  return weightedPick(weighted);
 }
 
 export type RoundRow = {
@@ -78,7 +167,7 @@ export type RoundRow = {
 // or "latest round is complete" themselves.
 export async function getLatestRound(
   roomId: string,
-  type: "know_me" | "bet_on_me"
+  type: ExperienceType
 ): Promise<RoundRow | null> {
   const { data } = await supabase
     .from("experience_rounds")
@@ -96,11 +185,15 @@ export async function getLatestRound(
 // so viewing a page never silently starts a round nobody asked for.
 export async function startNextRound(
   roomId: string,
-  type: "know_me" | "bet_on_me"
+  type: ExperienceType
 ): Promise<RoundRow> {
   const last = await getLatestRound(roomId, type);
   const nextNumber = (last?.round_number ?? 0) + 1;
-  const nextType = await selectNextRoundType(roomId, last?.round_type ?? null);
+  const nextType = await selectNextRoundType(
+    roomId,
+    type,
+    last?.round_type ?? null
+  );
 
   const { data, error } = await supabase
     .from("experience_rounds")
@@ -154,8 +247,10 @@ export async function getRoundProgress(roundId: string) {
 }
 
 // Call after every answer submission. Closes the round the moment it
-// hits ROUND_SIZE — deliberately, not as a punishment, just the natural
-// stopping point the round was always going to reach.
+// hits roundSize — deliberately, not as a punishment, just the natural
+// stopping point the round was always going to reach. Fires a
+// fire-and-forget signal analysis so the NEXT round's type selection has
+// real tone/fatigue data to weigh.
 export async function completeRoundIfFull(
   roundId: string,
   roundSize: number = ROUND_SIZE
@@ -167,6 +262,13 @@ export async function completeRoundIfFull(
       .update({ status: "complete", completed_at: new Date().toISOString() })
       .eq("id", roundId)
       .eq("status", "active");
+
+    fetch("/api/analyze-round-signal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roundId }),
+    }).catch(() => {});
+
     return true;
   }
   return false;

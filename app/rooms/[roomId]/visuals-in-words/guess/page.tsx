@@ -129,6 +129,12 @@ export default function GuessThePicturePage() {
           .update({ status: "complete", completed_at: new Date().toISOString() })
           .eq("id", latest.id)
           .eq("status", "active");
+
+        fetch("/api/analyze-round-signal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roundId: latest.id }),
+        }).catch(() => {});
       }
     }
 
