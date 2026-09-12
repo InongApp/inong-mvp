@@ -5,6 +5,33 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type RoomType = "one_on_one" | "inner_circle" | "family";
+type RelationshipMode = "romantic" | "soulmate" | "friendship";
+
+const RELATIONSHIP_MODES: {
+  mode: RelationshipMode;
+  icon: string;
+  label: string;
+  blurb: string;
+}[] = [
+  {
+    mode: "romantic",
+    icon: "❤️",
+    label: "Romantic",
+    blurb: "Partners, dating, married, or engaged.",
+  },
+  {
+    mode: "soulmate",
+    icon: "✨",
+    label: "Soulmate",
+    blurb: "A profound bond — not necessarily romantic.",
+  },
+  {
+    mode: "friendship",
+    icon: "🤝",
+    label: "Friendship",
+    blurb: "Close friends, platonic, family-like.",
+  },
+];
 
 const ROOM_TYPES: {
   type: RoomType;
@@ -39,6 +66,7 @@ export default function NewRoomPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [type, setType] = useState<RoomType | null>(null);
+  const [relationshipMode, setRelationshipMode] = useState<RelationshipMode | null>(null);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +85,9 @@ export default function NewRoomPage() {
 
   async function handleCreate() {
     if (!userId || !type) return;
+    if (type === "one_on_one" && !relationshipMode) {
+      return setError("Pick what kind of relationship this is first.");
+    }
     if (type !== "one_on_one" && !name.trim()) {
       return setError("Give this group a name.");
     }
@@ -69,6 +100,7 @@ export default function NewRoomPage() {
         .insert({
           type,
           name: type === "one_on_one" ? null : name.trim(),
+          relationship_mode: type === "one_on_one" ? relationshipMode : null,
           max_members: meta.maxMembers,
           created_by: userId,
         })
@@ -100,7 +132,11 @@ export default function NewRoomPage() {
   return (
     <div className="flex flex-1 flex-col">
       <button
-        onClick={() => (type ? setType(null) : router.push("/"))}
+        onClick={() => {
+          if (type === "one_on_one" && relationshipMode) setRelationshipMode(null);
+          else if (type) setType(null);
+          else router.push("/");
+        }}
         className="self-start text-sm text-mute hover:text-paper"
       >
         ← Back
@@ -166,11 +202,42 @@ export default function NewRoomPage() {
           </>
         )}
 
-        {type === "one_on_one" && (
+        {type === "one_on_one" && !relationshipMode && (
+          <>
+            <h1 className="font-serif text-2xl font-semibold">
+              What kind of relationship is this?
+            </h1>
+            <p className="mt-2 text-sm text-mute">
+              This shapes the tone of everything INONG™ generates for this
+              room — romantic, deeply platonic, or somewhere your own to
+              define.
+            </p>
+            <div className="mt-8 space-y-3">
+              {RELATIONSHIP_MODES.map((r) => (
+                <button
+                  key={r.mode}
+                  onClick={() => setRelationshipMode(r.mode)}
+                  className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-coral"
+                >
+                  <p className="font-serif text-lg text-paper">
+                    {r.icon} {r.label}
+                  </p>
+                  <p className="mt-1 text-sm text-mute">{r.blurb}</p>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {type === "one_on_one" && relationshipMode && (
           <>
             <h1 className="font-serif text-2xl font-semibold">
               Start a One-on-One
             </h1>
+            <p className="mt-2 text-sm text-coral">
+              {RELATIONSHIP_MODES.find((r) => r.mode === relationshipMode)?.icon}{" "}
+              {RELATIONSHIP_MODES.find((r) => r.mode === relationshipMode)?.label}
+            </p>
             <p className="mt-4 text-mute">
               You&rsquo;ll get an invite link to send your Inong right after.
             </p>

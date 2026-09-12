@@ -34,6 +34,7 @@ create table rooms (
   id uuid primary key default uuid_generate_v4(),
   name text, -- null for one_on_one (display name is computed from the other member)
   type text not null check (type in ('one_on_one', 'inner_circle', 'family')),
+  relationship_mode text check (relationship_mode in ('romantic', 'soulmate', 'friendship')), -- one_on_one only; null = legacy room, treated as friendship
   max_members int, -- 2, 13, or null (unlimited)
   created_by uuid not null references profiles(id),
   created_at timestamptz not null default now()

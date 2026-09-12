@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getRelevantDiscoveries } from "@/lib/discoveryRelevance";
+import { relationshipModeInstruction } from "@/lib/relationshipMode";
 
 export async function POST(req: Request) {
   try {
@@ -14,21 +16,23 @@ export async function POST(req: Request) {
     }
 
     let discoveriesContext = "";
+    let modeInstruction = "";
     if (roomId) {
-      const { data: discoveries } = await supabaseAdmin
-        .from("discoveries")
-        .select("summary")
-        .eq("room_id", roomId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      if (discoveries && discoveries.length > 0) {
-        discoveriesContext = `\n\nWhat's already known about this relationship:\n${discoveries
-          .map((d: any) => `- ${d.summary}`)
+      const relevant = await getRelevantDiscoveries(roomId, 5);
+      if (relevant.length > 0) {
+        discoveriesContext = `\n\nWhat's already known about this relationship:\n${relevant
+          .map((s) => `- ${s}`)
           .join("\n")}\nOptionally draw on this if it fits naturally.`;
       }
+      const { data: room } = await supabaseAdmin
+        .from("rooms")
+        .select("relationship_mode")
+        .eq("id", roomId)
+        .maybeSingle();
+      modeInstruction = `\n\n${relationshipModeInstruction(room?.relationship_mode ?? null)}`;
     }
 
-    const systemPrompt = `You write ONE short, reflective daily check-in question for two close people to answer independently, once a day. It should be small, easy to answer in a sentence, and genuinely worth a daily habit — a mood, a highlight, a hope, a small honest reflection. Never a fact-quiz question, never something that needs research or long thought. Always open-ended.`;
+    const systemPrompt = `You write ONE short, reflective daily check-in question for two close people to answer independently, once a day. It should be small, easy to answer in a sentence, and genuinely worth a daily habit — a mood, a highlight, a hope, a small honest reflection. Never a fact-quiz question, never something that needs research or long thought. Always open-ended.${modeInstruction}`;
 
     const userPrompt = `Write today's check-in question.${discoveriesContext}
 

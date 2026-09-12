@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getRelevantDiscoveries } from "@/lib/discoveryRelevance";
+import { relationshipModeInstruction } from "@/lib/relationshipMode";
 
 const ROUND_TYPE_INSTRUCTIONS: Record<string, string> = {
   discover:
@@ -35,11 +37,21 @@ export async function POST(req: Request) {
     const isKnowMe = type === "know_me";
     const isVisuals = type === "visuals_in_words";
 
+    let modeInstruction = "";
+    if (roomId && !isVisuals) {
+      const { data: room } = await supabaseAdmin
+        .from("rooms")
+        .select("relationship_mode")
+        .eq("id", roomId)
+        .maybeSingle();
+      modeInstruction = `\n\n${relationshipModeInstruction(room?.relationship_mode ?? null)}`;
+    }
+
     const systemPrompt = isVisuals
       ? `You write short, evocative prompts for "Visuals in Words" — a game where two close people each independently describe what they picture, in their own words, for the SAME evocative prompt. There is no right answer and nobody predicts anybody — the fun is discovering how differently (or similarly) two people imagine the same thing. Prompts should be abstract or metaphorical enough that two people would picture genuinely different things: a place, a feeling, a symbol, a "what does X look like to you" framing. Never ask for a fact or a preference (that's Know Me's job) — ask for an IMAGE, a SCENE, or a FEELING rendered in words. Always open-ended, never multiple-choice.`
       : isKnowMe
-      ? `You write short, specific, emotionally real questions for a "Know Me" game between two close people (romantic partners, family, or close friends). The question is answered by the SUBJECT about themselves; the ASKER predicts what the subject will say. Questions must feel personal and deepen the relationship — never generic small talk, never something answerable with a shrug. Draw on real human topics: fears, values, memories, relationships, ambitions, regrets, joys, contradictions, formative experiences. The question FORMAT (multiple-choice or open-ended) will be specified explicitly in the instructions below — follow that exactly, don't decide it yourself.`
-      : `You write short, specific "Bet on Me" prediction questions between two close people — the ASKER predicts what the SUBJECT will choose or do, often something current or near-term (today, this week, right now), not abstract. Keep it playful but never generic or shallow. The question FORMAT (multiple-choice or open-ended) will be specified explicitly below — follow that exactly.`;
+      ? `You write short, specific, emotionally real questions for a "Know Me" game between two close people. The question is answered by the SUBJECT about themselves; the ASKER predicts what the subject will say. Questions must feel personal and deepen the relationship — never generic small talk, never something answerable with a shrug. Draw on real human topics: fears, values, memories, relationships, ambitions, regrets, joys, contradictions, formative experiences. The question FORMAT (multiple-choice or open-ended) will be specified explicitly in the instructions below — follow that exactly, don't decide it yourself.${modeInstruction}`
+      : `You write short, specific "Bet on Me" prediction questions between two close people — the ASKER predicts what the SUBJECT will choose or do, often something current or near-term (today, this week, right now), not abstract. Keep it playful but never generic or shallow. The question FORMAT (multiple-choice or open-ended) will be specified explicitly below — follow that exactly.${modeInstruction}`;
 
     const formatInstruction = isVisuals
       ? `\n\nFORMAT (required): this is always OPEN-ENDED. Set "options" to null.`
@@ -82,22 +94,15 @@ export async function POST(req: Request) {
         followUpInstruction = `\n\nSomething real about this relationship: "${chosen}". Turn this into an evocative visual prompt — ask them to describe what that looks or feels like as an image or scene, not to restate the fact itself.`;
       }
     } else if (roomId) {
-      const { data: discoveries } = await supabaseAdmin
-        .from("discoveries")
-        .select("summary")
-        .eq("room_id", roomId)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      if (discoveries && discoveries.length > 0) {
+      const relevant = await getRelevantDiscoveries(roomId, 10);
+      if (relevant.length > 0) {
         discoveriesContext = isVisuals
-          ? `\n\nWhat's already known about this relationship:\n${discoveries
-              .map((d: any) => `- ${d.summary}`)
+          ? `\n\nWhat's already known about this relationship:\n${relevant
+              .map((s) => `- ${s}`)
               .join("\n")}\nFeel free to draw on this for inspiration, but keep the prompt about an image or feeling, not a restated fact.`
-          : `\n\nWhat's already been discovered about ${subjectName} in past rounds:\n${discoveries
-              .map((d: any) => `- ${d.summary}`)
-              .join(
-                "\n"
-              )}\nUse this to avoid repeating known ground.`;
+          : `\n\nWhat's already been discovered about ${subjectName} in past rounds:\n${relevant
+              .map((s) => `- ${s}`)
+              .join("\n")}\nUse this to avoid repeating known ground.`;
       }
     }
 
