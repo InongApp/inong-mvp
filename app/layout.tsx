@@ -42,12 +42,9 @@ export default function RootLayout({
           <AuthBar />
           <img
             src="/logo.png"
-            alt="INONG"
-            className="mx-auto h-24 w-auto"
+            alt="INONG — Put Down the World, Pick Up Each Other"
+            className="mx-auto h-32 w-auto"
           />
-          <p className="mt-1 text-center text-xs uppercase tracking-widest text-mute">
-            Put Down the World. Pick Up Each Other.
-          </p>
           <div className="mt-4 flex flex-1 flex-col">
             <InstallPrompt />
             <PushOptIn />
@@ -61,4 +58,3 @@ export default function RootLayout({
     </html>
   );
 }
-
