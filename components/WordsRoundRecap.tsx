@@ -6,15 +6,22 @@ export default function WordsRoundRecap({
   friendName,
   onStartNext,
   starting,
+  milestone,
 }: {
   roundNumber: number;
   typeLabel?: string | null;
   friendName: string;
   onStartNext: () => void;
   starting: boolean;
+  milestone?: string | null;
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
+      {milestone && (
+        <div className="mb-6 w-full rounded-card bg-coral/10 px-4 py-3 text-sm text-coral">
+          🎉 {milestone}
+        </div>
+      )}
       <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-coral text-3xl">
         🎨
       </div>

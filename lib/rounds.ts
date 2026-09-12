@@ -133,12 +133,36 @@ function weightedPick(
   return weighted[weighted.length - 1].type;
 }
 
+function generateSignalNote(
+  pickedType: RoundType,
+  fatigueRisk: boolean,
+  tone: string | null,
+  highEngagement: boolean
+): string | undefined {
+  // Only speak up when the signal that shaped the weighting actually shows
+  // up in the outcome — never claim credit for a purely random pick.
+  if (fatigueRisk && (pickedType === "play" || pickedType === "surprise")) {
+    return "Your last few rounds took a bit longer to answer, so here's something lighter.";
+  }
+  if (tone === "tense" && (pickedType === "connection" || pickedType === "play")) {
+    return "Last round felt a little tense, so let's ease back into it.";
+  }
+  if (
+    (tone === "warm" || tone === "playful") &&
+    highEngagement &&
+    (pickedType === "deepen" || pickedType === "connection")
+  ) {
+    return "You two have been really open lately, so let's go a bit deeper.";
+  }
+  return undefined;
+}
+
 async function selectNextRoundType(
   roomId: string,
   type: ExperienceType,
   lastType: RoundType | null
-): Promise<RoundType> {
-  if (!lastType) return "discover"; // round 1 always starts here — nothing to deepen/revisit yet
+): Promise<{ roundType: RoundType; signalNote?: string }> {
+  if (!lastType) return { roundType: "discover" }; // round 1 always starts here — nothing to deepen/revisit yet
 
   const { count } = await supabase
     .from("discoveries")
@@ -152,7 +176,21 @@ async function selectNextRoundType(
 
   const signals = await getRecentSignals(roomId, type);
   const weighted = weightCandidates(candidates, signals);
-  return weightedPick(weighted);
+  const roundType = weightedPick(weighted);
+
+  const [last, prev] = signals;
+  let fatigueRisk = false;
+  if (
+    last?.avg_response_seconds != null &&
+    prev?.avg_response_seconds != null &&
+    prev.avg_response_seconds > 0
+  ) {
+    fatigueRisk = last.avg_response_seconds > prev.avg_response_seconds * 1.5;
+  }
+  const highEngagement = !fatigueRisk && last?.match_rate != null && last.match_rate >= 0.7;
+  const signalNote = generateSignalNote(roundType, fatigueRisk, last?.tone ?? null, highEngagement);
+
+  return { roundType, signalNote };
 }
 
 export type RoundRow = {
@@ -186,10 +224,10 @@ export async function getLatestRound(
 export async function startNextRound(
   roomId: string,
   type: ExperienceType
-): Promise<RoundRow> {
+): Promise<RoundRow & { signalNote?: string }> {
   const last = await getLatestRound(roomId, type);
   const nextNumber = (last?.round_number ?? 0) + 1;
-  const nextType = await selectNextRoundType(
+  const { roundType: nextType, signalNote } = await selectNextRoundType(
     roomId,
     type,
     last?.round_type ?? null
@@ -208,7 +246,7 @@ export async function startNextRound(
     .single();
 
   if (error) throw error;
-  return data as RoundRow;
+  return { ...(data as RoundRow), signalNote };
 }
 
 export async function getRoundProgress(roundId: string) {

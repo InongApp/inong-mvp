@@ -34,6 +34,7 @@ create table rooms (
   id uuid primary key default uuid_generate_v4(),
   name text, -- null for one_on_one (display name is computed from the other member)
   type text not null check (type in ('one_on_one', 'inner_circle', 'family')),
+  relationship_mode text check (relationship_mode in ('romantic', 'soulmate', 'friendship')), -- one_on_one only; null = legacy room, treated as friendship
   max_members int, -- 2, 13, or null (unlimited)
   created_by uuid not null references profiles(id),
   created_at timestamptz not null default now()
@@ -197,6 +198,76 @@ create table daily_responses (
   unique (daily_prompt_id, profile_id)
 );
 
+-- =========================================================
+-- DIGITAL FRIEND: solo practice against an AI-simulated persona.
+-- Deliberately isolated from experiences/rounds/discoveries — a
+-- simulated answer must never be mistaken for, or blended with, real
+-- truth about a real person. No shared tables with real gameplay.
+-- =========================================================
+create table digital_friend_personas (
+  id uuid primary key default uuid_generate_v4(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  traits text not null,
+  type text not null check (type in ('app', 'custom')),
+  created_at timestamptz not null default now()
+);
+
+create table digital_friend_sessions (
+  id uuid primary key default uuid_generate_v4(),
+  profile_id uuid not null references profiles(id) on delete cascade,
+  persona_id uuid references digital_friend_personas(id) on delete set null, -- null for app presets
+  persona_key text not null, -- app preset key, or the custom persona's id as text — stable across sessions for balance tracking
+  persona_name text not null,   -- snapshot at session start
+  persona_traits text not null, -- snapshot at session start
+  difficulty text not null check (difficulty in ('easy', 'medium', 'hard')),
+  mode text not null check (mode in ('know_me', 'bet_on_me')),
+  created_at timestamptz not null default now()
+);
+
+create table digital_friend_rounds (
+  id uuid primary key default uuid_generate_v4(),
+  session_id uuid not null references digital_friend_sessions(id) on delete cascade,
+  question text not null,
+  options jsonb,
+  digital_answer text not null, -- the persona's simulated "true" answer
+  player_answer text,
+  points_wagered int, -- bet_on_me only
+  resolved boolean not null default false,
+  correct boolean,
+  points_delta int,
+  created_at timestamptz not null default now()
+);
+
+create table digital_friend_balances (
+  profile_id uuid not null references profiles(id) on delete cascade,
+  persona_key text not null, -- custom persona id, or the app preset's key
+  points int not null default 500,
+  updated_at timestamptz not null default now(),
+  primary key (profile_id, persona_key)
+);
+
+-- JUST BECAUSE: the one mechanic-free space in the whole app. No round, no
+-- score, no AI, no turn-taking. A message can be empty — even a bare send
+-- with no words is a valid, complete gesture.
+create table just_because_notes (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  sender_id uuid not null references profiles(id) on delete cascade,
+  message text not null default '',
+  created_at timestamptz not null default now()
+);
+
+-- MILESTONES: tracks which milestones (round counts, room age) have already
+-- been shown for a room, so a congratulatory moment fires exactly once.
+create table milestones_seen (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid not null references rooms(id) on delete cascade,
+  milestone_key text not null,
+  seen_at timestamptz not null default now(),
+  unique (room_id, milestone_key)
+);
+
 create table responses (
   id uuid primary key default uuid_generate_v4(),
   experience_id uuid not null references experiences(id) on delete cascade,
@@ -256,6 +327,12 @@ alter table inside_jokes enable row level security;
 alter table surprises enable row level security;
 alter table daily_prompts enable row level security;
 alter table daily_responses enable row level security;
+alter table digital_friend_personas enable row level security;
+alter table digital_friend_sessions enable row level security;
+alter table digital_friend_rounds enable row level security;
+alter table digital_friend_balances enable row level security;
+alter table just_because_notes enable row level security;
+alter table milestones_seen enable row level security;
 alter table responses enable row level security;
 alter table experience_comments enable row level security;
 alter table push_subscriptions enable row level security;
@@ -473,6 +550,62 @@ create policy "daily_responses: self insert" on daily_responses
       join room_members m on m.room_id = p.room_id
       where p.id = daily_responses.daily_prompt_id and m.profile_id = auth.uid()
     )
+  );
+
+-- DIGITAL FRIEND: solo practice, owner-only throughout. No room_members
+-- join needed — it's one real person and an AI, not two real people.
+create policy "df_personas: owner select" on digital_friend_personas
+  for select using (profile_id = auth.uid());
+create policy "df_personas: owner insert" on digital_friend_personas
+  for insert with check (profile_id = auth.uid());
+
+create policy "df_sessions: owner select" on digital_friend_sessions
+  for select using (profile_id = auth.uid());
+create policy "df_sessions: owner insert" on digital_friend_sessions
+  for insert with check (profile_id = auth.uid());
+
+create policy "df_rounds: owner select" on digital_friend_rounds
+  for select using (
+    exists (select 1 from digital_friend_sessions s where s.id = digital_friend_rounds.session_id and s.profile_id = auth.uid())
+  );
+create policy "df_rounds: owner insert" on digital_friend_rounds
+  for insert with check (
+    exists (select 1 from digital_friend_sessions s where s.id = digital_friend_rounds.session_id and s.profile_id = auth.uid())
+  );
+create policy "df_rounds: owner update" on digital_friend_rounds
+  for update using (
+    exists (select 1 from digital_friend_sessions s where s.id = digital_friend_rounds.session_id and s.profile_id = auth.uid())
+  );
+
+create policy "df_balances: owner select" on digital_friend_balances
+  for select using (profile_id = auth.uid());
+create policy "df_balances: owner insert" on digital_friend_balances
+  for insert with check (profile_id = auth.uid());
+create policy "df_balances: owner update" on digital_friend_balances
+  for update using (profile_id = auth.uid());
+
+-- JUST BECAUSE: any room member can read or send. No update/delete —
+-- these are permanent, tiny, and honest.
+create policy "just_because: members read" on just_because_notes
+  for select using (
+    exists (select 1 from room_members m where m.room_id = just_because_notes.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "just_because: members send" on just_because_notes
+  for insert with check (
+    sender_id = auth.uid()
+    and exists (select 1 from room_members m where m.room_id = just_because_notes.room_id and m.profile_id = auth.uid())
+  );
+
+-- MILESTONES: any room member can read or mark seen
+create policy "milestones: members read" on milestones_seen
+  for select using (
+    exists (select 1 from room_members m where m.room_id = milestones_seen.room_id and m.profile_id = auth.uid())
+  );
+
+create policy "milestones: members insert" on milestones_seen
+  for insert with check (
+    exists (select 1 from room_members m where m.room_id = milestones_seen.room_id and m.profile_id = auth.uid())
   );
 
 create policy "responses: room members read" on responses

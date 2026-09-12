@@ -18,6 +18,7 @@ import CommentThread from "@/components/CommentThread";
 import WagerSelector from "@/components/WagerSelector";
 import BetRevealCard from "@/components/BetRevealCard";
 import BetRoundRecap from "@/components/BetRoundRecap";
+import { checkRoundMilestone, markMilestoneSeen } from "@/lib/milestones";
 
 // Bet on Me has its own identity, not a Know-Me reskin: the person who
 // creates the scenario (created_by) is the SUBJECT — they'll reveal a real
@@ -54,6 +55,8 @@ export default function BetOnMePage() {
   const { userId, roomId, friendId, friendName, ready } = useRoomSession();
 
   const [round, setRound] = useState<RoundRow | null>(null);
+  const [signalNote, setSignalNote] = useState<string | null>(null);
+  const [roundMilestone, setRoundMilestone] = useState<string | null>(null);
   const [recapDiscoveries, setRecapDiscoveries] = useState<Discovery[]>([]);
   const [recapNetPoints, setRecapNetPoints] = useState(0);
   const [startingNext, setStartingNext] = useState(false);
@@ -214,6 +217,7 @@ export default function BetOnMePage() {
     if (round && round.status === "active") return round;
     const created = await startNextRound(roomId!, "bet_on_me");
     setRound(created);
+    if (created.signalNote) setSignalNote(created.signalNote);
     return created;
   }
 
@@ -421,6 +425,16 @@ export default function BetOnMePage() {
   }
 
   if (round && round.status === "complete") {
+    if (roundMilestone === null) {
+      checkRoundMilestone(roomId!, "bet_on_me", round.round_number).then((found) => {
+        if (found) {
+          setRoundMilestone(found.label);
+          markMilestoneSeen(roomId!, found.key);
+        } else {
+          setRoundMilestone("");
+        }
+      });
+    }
     return (
       <BetRoundRecap
         roundNumber={round.round_number}
@@ -433,6 +447,7 @@ export default function BetOnMePage() {
           setStartingNext(true);
           try {
             await startNextRound(roomId!, "bet_on_me");
+            setRoundMilestone(null);
             await load();
           } catch (e: any) {
             setError(e.message ?? "Couldn't start the next round.");
@@ -441,6 +456,7 @@ export default function BetOnMePage() {
           }
         }}
         starting={startingNext}
+        milestone={roundMilestone || null}
       />
     );
   }
@@ -449,21 +465,34 @@ export default function BetOnMePage() {
   const typeInfo = round ? roundTypeInfo(round.round_type) : null;
 
   const scoreboard = (
-    <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
-      <div className="flex items-center justify-between">
-        <span>
-          {roundLabel}
-          {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 bets each
-        </span>
-        <button
-          onClick={() => router.push(`/rooms/${roomId}/history`)}
-          className="text-skyblue hover:underline"
-        >
-          History
-        </button>
+    <>
+      {signalNote && (
+        <div className="mb-3 flex items-start justify-between gap-2 rounded-card bg-skyblue/10 px-4 py-3 text-xs text-skyblue">
+          <span>💡 {signalNote}</span>
+          <button
+            onClick={() => setSignalNote(null)}
+            className="shrink-0 text-skyblue/60 hover:text-skyblue"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
+        <div className="flex items-center justify-between">
+          <span>
+            {roundLabel}
+            {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 bets each
+          </span>
+          <button
+            onClick={() => router.push(`/rooms/${roomId}/history`)}
+            className="text-skyblue hover:underline"
+          >
+            History
+          </button>
+        </div>
+        <p className="mt-1">Balance: {balance} points</p>
       </div>
-      <p className="mt-1">Balance: {balance} points</p>
-    </div>
+    </>
   );
 
   const isSubject = experience ? experience.created_by === userId : false;

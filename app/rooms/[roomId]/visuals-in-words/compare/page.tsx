@@ -15,6 +15,7 @@ import { notify } from "@/lib/notifyClient";
 import CommentThread from "@/components/CommentThread";
 import WordPictureReveal from "@/components/WordPictureReveal";
 import WordsRoundRecap from "@/components/WordsRoundRecap";
+import { checkRoundMilestone, markMilestoneSeen } from "@/lib/milestones";
 
 // Visuals in Words has its own mechanic, deliberately unlike Know Me/Bet on
 // Me: nobody predicts anybody. Both people respond to the SAME evocative
@@ -40,6 +41,8 @@ export default function VisualsInWordsPage() {
   const { userId, roomId, friendId, friendName, ready } = useRoomSession();
 
   const [round, setRound] = useState<RoundRow | null>(null);
+  const [signalNote, setSignalNote] = useState<string | null>(null);
+  const [roundMilestone, setRoundMilestone] = useState<string | null>(null);
   const [startingNext, setStartingNext] = useState(false);
 
   const [experience, setExperience] = useState<Experience | null>(null);
@@ -122,6 +125,7 @@ export default function VisualsInWordsPage() {
     if (round && round.status === "active") return round;
     const created = await startNextRound(roomId!, "visuals_in_words" as any);
     setRound(created);
+    if (created.signalNote) setSignalNote(created.signalNote);
     return created;
   }
 
@@ -219,6 +223,16 @@ export default function VisualsInWordsPage() {
   const typeInfo = round ? roundTypeInfo(round.round_type) : null;
 
   if (round && round.status === "complete") {
+    if (roundMilestone === null) {
+      checkRoundMilestone(roomId!, "visuals_in_words", round.round_number).then((found) => {
+        if (found) {
+          setRoundMilestone(found.label);
+          markMilestoneSeen(roomId!, found.key);
+        } else {
+          setRoundMilestone("");
+        }
+      });
+    }
     return (
       <WordsRoundRecap
         roundNumber={round.round_number}
@@ -228,6 +242,7 @@ export default function VisualsInWordsPage() {
           setStartingNext(true);
           try {
             await startNextRound(roomId!, "visuals_in_words" as any);
+            setRoundMilestone(null);
             await load();
           } catch (e: any) {
             setError(e.message ?? "Couldn't start the next round.");
@@ -236,26 +251,40 @@ export default function VisualsInWordsPage() {
           }
         }}
         starting={startingNext}
+        milestone={roundMilestone || null}
       />
     );
   }
 
   const scoreboard = (
-    <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
-      <div className="flex items-center justify-between">
-        <span>
-          {round ? `Round ${round.round_number}` : "Round 1"}
-          {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 prompts each
-        </span>
-        <button
-          onClick={() => router.push(`/rooms/${roomId}/history`)}
-          className="text-coral hover:underline"
-        >
-          History
-        </button>
+    <>
+      {signalNote && (
+        <div className="mb-3 flex items-start justify-between gap-2 rounded-card bg-coral/10 px-4 py-3 text-xs text-coral">
+          <span>💡 {signalNote}</span>
+          <button
+            onClick={() => setSignalNote(null)}
+            className="shrink-0 text-coral/60 hover:text-coral"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
+        <div className="flex items-center justify-between">
+          <span>
+            {round ? `Round ${round.round_number}` : "Round 1"}
+            {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 prompts each
+          </span>
+          <button
+            onClick={() => router.push(`/rooms/${roomId}/history`)}
+            className="text-coral hover:underline"
+          >
+            History
+          </button>
+        </div>
+        {typeInfo && <p className="mt-1">{typeInfo.description}</p>}
       </div>
-      {typeInfo && <p className="mt-1">{typeInfo.description}</p>}
-    </div>
+    </>
   );
 
   const isMyTurn =

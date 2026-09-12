@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useRoomSession } from "@/lib/useRoomSession";
 import { getLatestRound, startNextRound, roundTypeInfo, RoundRow } from "@/lib/rounds";
 import { notify } from "@/lib/notifyClient";
+import { checkRoundMilestone, markMilestoneSeen } from "@/lib/milestones";
 import CommentThread from "@/components/CommentThread";
 
 const QUESTIONS_PER_ROUND = 6; // 3 presented by each player
@@ -32,6 +33,8 @@ export default function GuessThePicturePage() {
   const { userId, roomId, friendId, friendName, ready } = useRoomSession();
 
   const [round, setRound] = useState<RoundRow | null>(null);
+  const [signalNote, setSignalNote] = useState<string | null>(null);
+  const [roundMilestone, setRoundMilestone] = useState<string | null>(null);
   const [myScore, setMyScore] = useState(0);
   const [friendScore, setFriendScore] = useState(0);
   const [startingNext, setStartingNext] = useState(false);
@@ -145,6 +148,7 @@ export default function GuessThePicturePage() {
     if (round && round.status === "active") return round;
     const created = await startNextRound(roomId!, "visuals_guess" as any);
     setRound(created);
+    if (created.signalNote) setSignalNote(created.signalNote);
     return created;
   }
 
@@ -264,8 +268,23 @@ export default function GuessThePicturePage() {
   const typeInfo = round ? roundTypeInfo(round.round_type) : null;
 
   if (round && round.status === "complete") {
+    if (roundMilestone === null) {
+      checkRoundMilestone(roomId!, "visuals_guess", round.round_number).then((found) => {
+        if (found) {
+          setRoundMilestone(found.label);
+          markMilestoneSeen(roomId!, found.key);
+        } else {
+          setRoundMilestone("");
+        }
+      });
+    }
     return (
       <div className="flex flex-1 flex-col items-center justify-center text-center">
+        {roundMilestone && (
+          <div className="mb-6 w-full rounded-card bg-coral/10 px-4 py-3 text-sm text-coral">
+            🎉 {roundMilestone}
+          </div>
+        )}
         <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-coral text-3xl">
           🕵️
         </div>
@@ -283,6 +302,7 @@ export default function GuessThePicturePage() {
             setStartingNext(true);
             try {
               await startNextRound(roomId!, "visuals_guess" as any);
+              setRoundMilestone(null);
               await load();
             } catch (e: any) {
               setError(e.message ?? "Couldn't start the next round.");
@@ -300,23 +320,36 @@ export default function GuessThePicturePage() {
   }
 
   const scoreboard = (
-    <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
-      <div className="flex items-center justify-between">
-        <span>
-          {round ? `Round ${round.round_number}` : "Round 1"} · Q
-          {Math.min(roundQuestionCount, QUESTIONS_PER_ROUND)}/{QUESTIONS_PER_ROUND}
-        </span>
-        <button
-          onClick={() => router.push(`/rooms/${roomId}/history`)}
-          className="text-coral hover:underline"
-        >
-          History
-        </button>
+    <>
+      {signalNote && (
+        <div className="mb-3 flex items-start justify-between gap-2 rounded-card bg-coral/10 px-4 py-3 text-xs text-coral">
+          <span>💡 {signalNote}</span>
+          <button
+            onClick={() => setSignalNote(null)}
+            className="shrink-0 text-coral/60 hover:text-coral"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
+        <div className="flex items-center justify-between">
+          <span>
+            {round ? `Round ${round.round_number}` : "Round 1"} · Q
+            {Math.min(roundQuestionCount, QUESTIONS_PER_ROUND)}/{QUESTIONS_PER_ROUND}
+          </span>
+          <button
+            onClick={() => router.push(`/rooms/${roomId}/history`)}
+            className="text-coral hover:underline"
+          >
+            History
+          </button>
+        </div>
+        <p className="mt-1">
+          You: {myScore} · {friendName}: {friendScore}
+        </p>
       </div>
-      <p className="mt-1">
-        You: {myScore} · {friendName}: {friendScore}
-      </p>
-    </div>
+    </>
   );
 
   const isPresenter = experience ? experience.created_by === userId : false;

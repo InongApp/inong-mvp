@@ -11,6 +11,7 @@ export default function BetRoundRecap({
   discoveries,
   onStartNext,
   starting,
+  milestone,
 }: {
   roundNumber: number;
   typeLabel?: string | null;
@@ -20,6 +21,7 @@ export default function BetRoundRecap({
   discoveries: Discovery[];
   onStartNext: () => void;
   starting: boolean;
+  milestone?: string | null;
 }) {
   const verdict =
     netPoints > 0
@@ -30,6 +32,11 @@ export default function BetRoundRecap({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-center">
+      {milestone && (
+        <div className="mb-6 w-full rounded-card bg-skyblue/10 px-4 py-3 text-sm text-skyblue">
+          🎉 {milestone}
+        </div>
+      )}
       <p className="text-sm uppercase tracking-wide text-mute">
         Round {roundNumber}
         {typeLabel ? ` — ${typeLabel}` : ""} complete

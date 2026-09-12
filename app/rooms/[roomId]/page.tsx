@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { checkRoomAgeMilestone, markMilestoneSeen } from "@/lib/milestones";
 
 type Member = { profile_id: string; display_name: string };
 type Room = {
@@ -11,6 +12,7 @@ type Room = {
   type: "one_on_one" | "inner_circle" | "family";
   relationship_mode: "romantic" | "soulmate" | "friendship" | null;
   max_members: number | null;
+  created_at: string;
 };
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -34,6 +36,7 @@ export default function RoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [startingWith, setStartingWith] = useState<string | null>(null);
+  const [milestone, setMilestone] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -52,7 +55,7 @@ export default function RoomPage() {
 
     const { data: roomData, error: roomErr } = await supabase
       .from("rooms")
-      .select("id, name, type, relationship_mode, max_members")
+      .select("id, name, type, relationship_mode, max_members, created_at")
       .eq("id", params.roomId)
       .single();
 
@@ -62,6 +65,14 @@ export default function RoomPage() {
       return;
     }
     setRoom(roomData as Room);
+
+    if (roomData.type === "one_on_one") {
+      const found = await checkRoomAgeMilestone(roomData.id, roomData.created_at);
+      if (found) {
+        setMilestone(found.label);
+        await markMilestoneSeen(roomData.id, found.key);
+      }
+    }
 
     const { data: memberRows } = await supabase
       .from("room_members")
@@ -207,6 +218,18 @@ export default function RoomPage() {
         </button>
       </div>
 
+      {milestone && (
+        <div className="mt-4 flex items-center justify-between gap-2 rounded-card bg-coral/10 px-4 py-3 text-sm text-coral">
+          <span>🎉 {milestone}</span>
+          <button
+            onClick={() => setMilestone(null)}
+            className="shrink-0 text-coral/60 hover:text-coral"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {members.length > 0 && (
         <div className="mt-6 space-y-2">
           {members.map((m) => (
@@ -233,7 +256,19 @@ export default function RoomPage() {
       )}
 
       {room.type === "one_on_one" && members.length === 2 && (
-        <div className="mt-8 space-y-2">
+        <button
+          onClick={() => router.push(`/rooms/${room.id}/just-because`)}
+          className="mt-8 w-full rounded-card border-2 border-dashed border-coral/40 bg-coral/5 px-5 py-4 text-left transition hover:bg-coral/10"
+        >
+          <p className="font-medium text-coral">💌 Just Because</p>
+          <p className="mt-0.5 text-xs text-mute">
+            No game, no score — just say something.
+          </p>
+        </button>
+      )}
+
+      {room.type === "one_on_one" && members.length === 2 && (
+        <div className="mt-4 space-y-2">
           {[
             {
               href: "know-me",

@@ -18,6 +18,7 @@ import { notify } from "@/lib/notifyClient";
 import RevealCard from "@/components/RevealCard";
 import CommentThread from "@/components/CommentThread";
 import RoundRecap from "@/components/RoundRecap";
+import { checkRoundMilestone, markMilestoneSeen } from "@/lib/milestones";
 
 type Experience = {
   id: string;
@@ -42,6 +43,8 @@ export default function KnowMePage() {
   const { userId, roomId, friendId, friendName, ready } = useRoomSession();
 
   const [round, setRound] = useState<RoundRow | null>(null);
+  const [signalNote, setSignalNote] = useState<string | null>(null);
+  const [roundMilestone, setRoundMilestone] = useState<string | null>(null);
   const [recapDiscoveries, setRecapDiscoveries] = useState<Discovery[]>([]);
   const [recapProgress, setRecapProgress] = useState({ completed: 0, matches: 0 });
   const [startingNext, setStartingNext] = useState(false);
@@ -184,6 +187,7 @@ export default function KnowMePage() {
     setStartingNext(true);
     try {
       await startNextRound(roomId, "know_me");
+      setRoundMilestone(null); // reset so the new round gets checked fresh
       await load();
     } catch (e: any) {
       setError(e.message ?? "Couldn't start the next round.");
@@ -196,6 +200,7 @@ export default function KnowMePage() {
     if (round && round.status === "active") return round;
     const created = await startNextRound(roomId!, "know_me");
     setRound(created);
+    if (created.signalNote) setSignalNote(created.signalNote);
     return created;
   }
 
@@ -367,6 +372,16 @@ export default function KnowMePage() {
 
   // ---------- Round complete: the deliberate hanger ----------
   if (round && round.status === "complete") {
+    if (roundMilestone === null) {
+      checkRoundMilestone(roomId!, "know_me", round.round_number).then((found) => {
+        if (found) {
+          setRoundMilestone(found.label);
+          markMilestoneSeen(roomId!, found.key);
+        } else {
+          setRoundMilestone(""); // checked, nothing found — avoid re-checking every render
+        }
+      });
+    }
     return (
       <RoundRecap
         roundNumber={round.round_number}
@@ -378,6 +393,7 @@ export default function KnowMePage() {
         onStartNext={handleStartNextRound}
         starting={startingNext}
         accent="coral"
+        milestone={roundMilestone || null}
       />
     );
   }
@@ -387,21 +403,34 @@ export default function KnowMePage() {
   const currentMatched = matchedForId === experience?.id ? roundMatched : null;
 
   const scoreboard = (
-    <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
-      <div className="flex items-center justify-between">
-        <span>
-          {roundLabel}
-          {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 questions each
-        </span>
-        <button
-          onClick={() => router.push(`/rooms/${roomId}/history`)}
-          className="text-coral hover:underline"
-        >
-          History
-        </button>
+    <>
+      {signalNote && (
+        <div className="mb-3 flex items-start justify-between gap-2 rounded-card bg-coral/10 px-4 py-3 text-xs text-coral">
+          <span>💡 {signalNote}</span>
+          <button
+            onClick={() => setSignalNote(null)}
+            className="shrink-0 text-coral/60 hover:text-coral"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="mb-4 rounded-card bg-surface px-4 py-2 text-xs text-mute">
+        <div className="flex items-center justify-between">
+          <span>
+            {roundLabel}
+            {typeInfo ? ` — ${typeInfo.label}` : ""} · 5 questions each
+          </span>
+          <button
+            onClick={() => router.push(`/rooms/${roomId}/history`)}
+            className="text-coral hover:underline"
+          >
+            History
+          </button>
+        </div>
+        {typeInfo && <p className="mt-1 text-mute">{typeInfo.description}</p>}
       </div>
-      {typeInfo && <p className="mt-1 text-mute">{typeInfo.description}</p>}
-    </div>
+    </>
   );
 
   const isMyTurn =
