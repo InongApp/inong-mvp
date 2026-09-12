@@ -10,20 +10,28 @@ export type Challenge = {
 
 const ALL_MODES: RelationshipMode[] = ["romantic", "soulmate", "friendship"];
 
+// IMPORTANT: every prompt here must be fully answerable in plain text
+// through the comment thread. No prompt should require sending a photo,
+// GIF, or voice note — attachments are a premium feature that doesn't
+// exist yet. A prompt that implies "send a picture" but gives no way to
+// actually send one is a broken experience, not a fun one. Where a photo
+// or voice note felt like the natural version of an idea, it's rewritten
+// here as a described/spoken equivalent instead of dropped entirely.
+
 export const CHALLENGES: Challenge[] = [
   // ---------- Surprises: light, ambient, no time pressure (universal) ----------
   { prompt: "Both pick a restaurant for tonight — don't tell each other until you compare.", category: "silly", isDare: false },
-  { prompt: "Send the first GIF that describes how you're feeling right now.", category: "communication", isDare: false },
-  { prompt: "Both send a voice note instead of typing for the next message.", category: "communication", isDare: false },
-  { prompt: "Share the most recent photo in your camera roll, no explanation.", category: "silly", isDare: false },
+  { prompt: "Describe, in words, the GIF you'd send right now to show how you're feeling.", category: "communication", isDare: false },
+  { prompt: "Call each other for one minute instead of texting — just to hear their voice.", category: "communication", isDare: false },
+  { prompt: "Describe, without explanation, the most recent photo in your camera roll.", category: "silly", isDare: false },
   { prompt: "Both guess what song the other has stuck in their head — then check.", category: "silly", isDare: false },
   { prompt: "Both describe your ideal weekend in exactly five words.", category: "silly", isDare: false },
-  { prompt: "Send each other a throwback photo of yourselves from years ago.", category: "silly", isDare: false },
-  { prompt: "Send a voice note singing (badly is fine) the first song that comes to mind.", category: "silly", isDare: false },
+  { prompt: "Describe a favorite throwback memory of you two from years ago — what was happening?", category: "silly", isDare: false },
+  { prompt: "Type out (badly is fine) the lyrics of the first song that comes to mind.", category: "silly", isDare: false },
   { prompt: "Share your current mood as an emoji, no words.", category: "communication", isDare: false },
   { prompt: "Tell each other one small thing that made you smile today.", category: "communication", isDare: false },
   { prompt: "Both name a food you'd never share — then decide if that's true.", category: "taste", isDare: false },
-  { prompt: "Send a photo of exactly what's in front of you right now.", category: "silly", isDare: false },
+  { prompt: "Describe exactly what's in front of you right now, in detail.", category: "silly", isDare: false },
 
   // ---------- Dares: bolder, time-boxed, a little more vulnerable (universal) ----------
   { prompt: "Tell each other one thing you appreciate about them — and why.", category: "vulnerability", isDare: true, timerMinutes: 15 },
@@ -31,7 +39,7 @@ export const CHALLENGES: Challenge[] = [
   { prompt: "Ask each other a question you've never asked before.", category: "vulnerability", isDare: true, timerMinutes: 10 },
   { prompt: "Tell each other one thing you're avoiding dealing with right now.", category: "vulnerability", isDare: true, timerMinutes: 15 },
   { prompt: "Send a compliment you've been meaning to say but haven't.", category: "vulnerability", isDare: true, timerMinutes: 5 },
-  { prompt: "Share your phone's screen time for today. No judgment.", category: "vulnerability", isDare: true, timerMinutes: 5 },
+  { prompt: "Tell them your phone's screen time for today, in a sentence. No judgment.", category: "vulnerability", isDare: true, timerMinutes: 5 },
   { prompt: "Ask 'what's on your mind right now?' and actually wait for the real answer.", category: "communication", isDare: true, timerMinutes: 15 },
   { prompt: "Put your phones down and look at each other for 30 seconds without talking.", category: "vulnerability", isDare: true, timerMinutes: 5 },
   { prompt: "Tell each other about the last time they made you proud.", category: "vulnerability", isDare: true, timerMinutes: 10 },
@@ -40,7 +48,7 @@ export const CHALLENGES: Challenge[] = [
   // ---------- Romantic-specific dares ----------
   { prompt: "Recreate your first date, right now, in whatever way you can manage tonight.", category: "vulnerability", isDare: true, timerMinutes: 15, modes: ["romantic"] },
   { prompt: "Tell them one thing you find more attractive about them now than when you met.", category: "vulnerability", isDare: true, timerMinutes: 10, modes: ["romantic"] },
-  { prompt: "Slow dance to one song, phones down, right now.", category: "silly", isDare: true, timerMinutes: 5, modes: ["romantic"] },
+  { prompt: "Slow dance to one song, phones down, right now — then tell them how it felt.", category: "silly", isDare: true, timerMinutes: 5, modes: ["romantic"] },
 
   // ---------- Soulmate-specific dares ----------
   { prompt: "Tell them a belief about life you hold today that you didn't a few years ago.", category: "vulnerability", isDare: true, timerMinutes: 15, modes: ["soulmate"] },
@@ -67,4 +75,3 @@ export function randomChallenge(
   const finalPool = unused.length > 0 ? unused : pool; // recycle once exhausted
   return finalPool[Math.floor(Math.random() * finalPool.length)] ?? null;
 }
-
