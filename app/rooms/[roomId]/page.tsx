@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { checkRoomAgeMilestone, markMilestoneSeen } from "@/lib/milestones";
 import { useUnreadHrefs } from "./layout";
+import { ROMANTIC_STAGES, RomanticStage } from "@/lib/relationshipMode";
 
 type Member = { profile_id: string; display_name: string };
 type Room = {
@@ -12,6 +13,7 @@ type Room = {
   name: string | null;
   type: "one_on_one" | "inner_circle" | "family";
   relationship_mode: "romantic" | "soulmate" | "friendship" | null;
+  romantic_stage: RomanticStage;
   max_members: number | null;
   created_at: string;
 };
@@ -39,6 +41,8 @@ export default function RoomPage() {
   const [notFound, setNotFound] = useState(false);
   const [startingWith, setStartingWith] = useState<string | null>(null);
   const [milestone, setMilestone] = useState<string | null>(null);
+  const [editingStage, setEditingStage] = useState(false);
+  const [savingStage, setSavingStage] = useState(false);
 
   useEffect(() => {
     load();
@@ -57,7 +61,7 @@ export default function RoomPage() {
 
     const { data: roomData, error: roomErr } = await supabase
       .from("rooms")
-      .select("id, name, type, relationship_mode, max_members, created_at")
+      .select("id, name, type, relationship_mode, romantic_stage, max_members, created_at")
       .eq("id", params.roomId)
       .single();
 
@@ -87,6 +91,23 @@ export default function RoomPage() {
     }));
     setMembers(list);
     setLoading(false);
+  }
+
+  async function updateStage(stage: Exclude<RomanticStage, null>) {
+    if (!room) return;
+    setSavingStage(true);
+    try {
+      const { error: updateErr } = await supabase
+        .from("rooms")
+        .update({ romantic_stage: stage })
+        .eq("id", room.id);
+      if (!updateErr) {
+        setRoom({ ...room, romantic_stage: stage });
+        setEditingStage(false);
+      }
+    } finally {
+      setSavingStage(false);
+    }
   }
 
   async function generateInvite() {
@@ -185,6 +206,7 @@ export default function RoomPage() {
       : room.type === "inner_circle"
       ? "Inner Circle"
       : "Family";
+  const currentStageLabel = ROMANTIC_STAGES.find((s) => s.key === room.romantic_stage)?.label;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -207,10 +229,21 @@ export default function RoomPage() {
                   : room.relationship_mode === "soulmate"
                   ? "✨ Soulmate"
                   : "🤝 Friendship"}
+                {room.relationship_mode === "romantic" && currentStageLabel && (
+                  <> · {currentStageLabel}</>
+                )}
               </>
             )}
           </p>
           <h1 className="font-serif text-2xl font-semibold">{roomTitle}</h1>
+          {room.relationship_mode === "romantic" && (
+            <button
+              onClick={() => setEditingStage((s) => !s)}
+              className="mt-1 text-xs text-coral hover:underline"
+            >
+              {currentStageLabel ? "Change stage" : "Set your stage"}
+            </button>
+          )}
         </div>
         <button
           onClick={() => router.push(`/rooms/${room.id}/history`)}
@@ -219,6 +252,30 @@ export default function RoomPage() {
           History & Score
         </button>
       </div>
+
+      {editingStage && room.relationship_mode === "romantic" && (
+        <div className="mt-3 rounded-card bg-surface px-4 py-3">
+          <p className="text-xs uppercase tracking-wide text-mute">
+            What stage are you in? This shapes the questions INONG™ asks.
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {ROMANTIC_STAGES.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => updateStage(s.key)}
+                disabled={savingStage}
+                className={`w-full rounded-card border px-3 py-2 text-left text-sm transition disabled:opacity-50 ${
+                  room.romantic_stage === s.key
+                    ? "border-coral text-coral"
+                    : "border-mute text-paper hover:border-paper"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {milestone && (
         <div className="mt-4 flex items-center justify-between gap-2 rounded-card bg-coral/10 px-4 py-3 text-sm text-coral">
@@ -372,6 +429,12 @@ export default function RoomPage() {
                 className="mt-3 rounded-full border border-mute px-5 py-2 text-sm text-paper transition hover:border-paper"
               >
                 {copied ? "Copied!" : "Copy link"}
+              </button>
+              <button
+                onClick={() => router.push("/digital-friend")}
+                className="mt-4 block text-sm text-coral hover:underline"
+              >
+                🤖 While you wait, meet Karabo →
               </button>
             </>
           ) : (

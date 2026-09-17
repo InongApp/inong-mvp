@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { ROMANTIC_STAGES, RomanticStage } from "@/lib/relationshipMode";
 
 type RoomType = "one_on_one" | "inner_circle" | "family";
 type RelationshipMode = "romantic" | "soulmate" | "friendship";
@@ -67,6 +68,7 @@ export default function NewRoomPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [type, setType] = useState<RoomType | null>(null);
   const [relationshipMode, setRelationshipMode] = useState<RelationshipMode | null>(null);
+  const [romanticStage, setRomanticStage] = useState<Exclude<RomanticStage, null> | null>(null);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,11 @@ export default function NewRoomPage() {
       setChecking(false);
     });
   }, [router]);
+
+  // Only romantic mode needs a stage; soulmate/friendship skip straight to confirm.
+  const needsStageStep = relationshipMode === "romantic";
+  const readyToConfirm =
+    relationshipMode && (!needsStageStep || romanticStage);
 
   async function handleCreate() {
     if (!userId || !type) return;
@@ -101,6 +108,10 @@ export default function NewRoomPage() {
           type,
           name: type === "one_on_one" ? null : name.trim(),
           relationship_mode: type === "one_on_one" ? relationshipMode : null,
+          romantic_stage:
+            type === "one_on_one" && relationshipMode === "romantic"
+              ? romanticStage
+              : null,
           max_members: meta.maxMembers,
           created_by: userId,
         })
@@ -133,7 +144,8 @@ export default function NewRoomPage() {
     <div className="flex flex-1 flex-col">
       <button
         onClick={() => {
-          if (type === "one_on_one" && relationshipMode) setRelationshipMode(null);
+          if (readyToConfirm && needsStageStep && romanticStage) setRomanticStage(null);
+          else if (relationshipMode) setRelationshipMode(null);
           else if (type) setType(null);
           else router.push("/");
         }}
@@ -229,7 +241,32 @@ export default function NewRoomPage() {
           </>
         )}
 
-        {type === "one_on_one" && relationshipMode && (
+        {type === "one_on_one" && needsStageStep && !romanticStage && (
+          <>
+            <h1 className="font-serif text-2xl font-semibold">
+              What stage are you in?
+            </h1>
+            <p className="mt-2 text-sm text-mute">
+              This sharpens the questions INONG™ asks — courting feels
+              different from long-married, and both are valid. You can
+              change this anytime from the room.
+            </p>
+            <div className="mt-8 space-y-3">
+              {ROMANTIC_STAGES.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setRomanticStage(s.key)}
+                  className="w-full rounded-card border border-mute px-5 py-4 text-left transition hover:border-coral"
+                >
+                  <p className="font-serif text-lg text-paper">{s.label}</p>
+                  <p className="mt-1 text-sm text-mute">{s.tension}</p>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {type === "one_on_one" && readyToConfirm && (
           <>
             <h1 className="font-serif text-2xl font-semibold">
               Start a One-on-One
@@ -237,6 +274,9 @@ export default function NewRoomPage() {
             <p className="mt-2 text-sm text-coral">
               {RELATIONSHIP_MODES.find((r) => r.mode === relationshipMode)?.icon}{" "}
               {RELATIONSHIP_MODES.find((r) => r.mode === relationshipMode)?.label}
+              {romanticStage && (
+                <> · {ROMANTIC_STAGES.find((s) => s.key === romanticStage)?.label}</>
+              )}
             </p>
             <p className="mt-4 text-mute">
               You&rsquo;ll get an invite link to send your Inong right after.
@@ -256,4 +296,3 @@ export default function NewRoomPage() {
     </div>
   );
 }
-

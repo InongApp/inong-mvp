@@ -26,10 +26,13 @@ export async function POST(req: Request) {
       }
       const { data: room } = await supabaseAdmin
         .from("rooms")
-        .select("relationship_mode")
+        .select("relationship_mode, romantic_stage")
         .eq("id", roomId)
         .maybeSingle();
-      modeInstruction = `\n\n${relationshipModeInstruction(room?.relationship_mode ?? null)}`;
+      modeInstruction = `\n\n${relationshipModeInstruction(
+        room?.relationship_mode ?? null,
+        room?.romantic_stage ?? null
+      )}`;
     }
 
     const systemPrompt = `You write ONE short, reflective daily check-in question for two close people to answer independently, once a day. It should be small, easy to answer in a sentence, and genuinely worth a daily habit — a mood, a highlight, a hope, a small honest reflection. Never a fact-quiz question, never something that needs research or long thought. Always open-ended.${modeInstruction}`;

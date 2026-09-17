@@ -41,10 +41,13 @@ export async function POST(req: Request) {
     if (roomId && !isVisuals) {
       const { data: room } = await supabaseAdmin
         .from("rooms")
-        .select("relationship_mode")
+        .select("relationship_mode, romantic_stage")
         .eq("id", roomId)
         .maybeSingle();
-      modeInstruction = `\n\n${relationshipModeInstruction(room?.relationship_mode ?? null)}`;
+      modeInstruction = `\n\n${relationshipModeInstruction(
+        room?.relationship_mode ?? null,
+        room?.romantic_stage ?? null
+      )}`;
     }
 
     const systemPrompt = isVisuals
