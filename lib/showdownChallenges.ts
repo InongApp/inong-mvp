@@ -28,6 +28,7 @@ export type ChallengeStatus =
   | "pending_accept" // invite sent, nobody's attached their Pair yet
   | "awaiting_ready" // both Pairs attached, waiting on one or both "I'm ready" taps
   | "ready_to_start" // both ready — the actual Showdown can begin (next build step)
+  | "in_progress" // a showdowns row exists — go to /showdown-match/[id]
   | "expired"
   | "cancelled";
 
@@ -41,6 +42,7 @@ export type Challenge = {
   status: ChallengeStatus;
   challenger_ready_at: string | null;
   challenged_ready_at: string | null;
+  showdown_id: string | null;
   created_at: string;
   expires_at: string;
 };

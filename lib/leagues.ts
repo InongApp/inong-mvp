@@ -19,6 +19,15 @@ export function leagueLabel(key: LeagueKey | null): string {
   return LEAGUES.find((l) => l.key === key)?.label ?? "Unclassified";
 }
 
+export function leagueToModeStage(
+  key: LeagueKey | null
+): { mode: "romantic" | "soulmate" | "friendship" | null; stage: Exclude<RomanticStage, null> | null } {
+  if (!key) return { mode: null, stage: null };
+  if (key === "soulmate") return { mode: "soulmate", stage: null };
+  if (key === "friendship") return { mode: "friendship", stage: null };
+  return { mode: "romantic", stage: key };
+}
+
 // Derives a Room's League from its existing relationship_mode/romantic_stage.
 // Returns null if not yet determinable (e.g. romantic with no stage chosen
 // yet) — callers should treat null as "League not yet set."

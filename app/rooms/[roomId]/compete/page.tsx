@@ -13,6 +13,7 @@ import {
   getChallengesForRoom,
   markReady,
 } from "@/lib/showdownChallenges";
+import { startShowdownFromChallenge } from "@/lib/showdowns";
 
 export default function CompetePage() {
   const params = useParams<{ roomId: string }>();
@@ -25,9 +26,12 @@ export default function CompetePage() {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [markingReady, setMarkingReady] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<string | null>(null);
 
   useEffect(() => {
     load();
+    const interval = setInterval(load, 5000); // catches the other Pair starting the match first
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -48,6 +52,13 @@ export default function CompetePage() {
     setLeagueKey(room?.league_key ?? null);
 
     const list = await getChallengesForRoom(params.roomId);
+
+    const started = list.find((c) => c.status === "in_progress" && c.showdown_id);
+    if (started) {
+      router.replace(`/rooms/${params.roomId}/showdown-match/${started.showdown_id}`);
+      return;
+    }
+
     setChallenges(list);
     setLoading(false);
   }
@@ -74,6 +85,22 @@ export default function CompetePage() {
       load();
     } finally {
       setMarkingReady(null);
+    }
+  }
+
+  async function handleStart(challenge: Challenge) {
+    setStartingId(challenge.id);
+    try {
+      const showdownId = await startShowdownFromChallenge(challenge);
+      if (showdownId) {
+        router.push(`/rooms/${params.roomId}/showdown-match/${showdownId}`);
+      } else {
+        // Most likely the other Pair already started it a moment ago —
+        // reload to pick up their showdown_id instead of erroring.
+        load();
+      }
+    } finally {
+      setStartingId(null);
     }
   }
 
@@ -176,7 +203,7 @@ export default function CompetePage() {
                       : theirReady
                       ? "They're ready — your turn"
                       : "Both sides need to tap ready")}
-                  {c.status === "ready_to_start" && "Both ready — Showdown coming soon 🏆"}
+                  {c.status === "ready_to_start" && "Both ready — let's go!"}
                 </p>
                 {c.status === "awaiting_ready" && !myReady && (
                   <button
@@ -185,6 +212,15 @@ export default function CompetePage() {
                     className="mt-2 rounded-full bg-coral px-4 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
                   >
                     {markingReady === c.id ? "..." : "I'm ready!"}
+                  </button>
+                )}
+                {c.status === "ready_to_start" && (
+                  <button
+                    onClick={() => handleStart(c)}
+                    disabled={startingId === c.id}
+                    className="mt-2 rounded-full bg-coral px-4 py-1.5 text-xs font-medium text-ink disabled:opacity-50"
+                  >
+                    {startingId === c.id ? "Starting..." : "🏆 Start Showdown"}
                   </button>
                 )}
               </div>
