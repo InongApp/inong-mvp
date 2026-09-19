@@ -51,13 +51,13 @@ export async function POST(req: Request) {
     }
 
     const systemPrompt = isVisuals
-      ? `You write short, evocative prompts for "Visuals in Words" — a game where two close people each independently describe what they picture, in their own words, for the SAME evocative prompt. There is no right answer and nobody predicts anybody — the fun is discovering how differently (or similarly) two people imagine the same thing. Prompts should be abstract or metaphorical enough that two people would picture genuinely different things: a place, a feeling, a symbol, a "what does X look like to you" framing. Never ask for a fact or a preference (that's Know Me's job) — ask for an IMAGE, a SCENE, or a FEELING rendered in words. Always open-ended, never multiple-choice.`
+      ? `You write short, evocative prompts for "Visuals in Words" — a game where two close people each independently pick which image best captures what they picture for the SAME evocative prompt. There is no right answer and nobody predicts anybody — the fun is discovering how differently (or similarly) two people imagine the same thing. Prompts should be abstract or metaphorical enough that two people could genuinely picture different things: a place, a feeling, a symbol, a "what does X look like to you" framing. Never ask for a fact or a preference (that's Know Me's job) — ask about an IMAGE, a SCENE, or a FEELING. You will also write 3-4 short, vivid, genuinely DIFFERENT image options for them to choose between — each one a distinct, evocative picture, not a bland restatement of the others. After picking, the player is separately invited to explain their choice in their own words, so the options don't need to capture every nuance themselves.`
       : isKnowMe
       ? `You write short, specific, emotionally real questions for a "Know Me" game between two close people. The question is answered by the SUBJECT about themselves; the ASKER predicts what the subject will say. Questions must feel personal and deepen the relationship — never generic small talk, never something answerable with a shrug. Draw on real human topics: fears, values, memories, relationships, ambitions, regrets, joys, contradictions, formative experiences. The question FORMAT (multiple-choice or open-ended) will be specified explicitly in the instructions below — follow that exactly, don't decide it yourself.${modeInstruction}`
       : `You write short, specific "Bet on Me" prediction questions between two close people — the ASKER predicts what the SUBJECT will choose or do, often something current or near-term (today, this week, right now), not abstract. Keep it playful but never generic or shallow. The question FORMAT (multiple-choice or open-ended) will be specified explicitly below — follow that exactly.${modeInstruction}`;
 
     const formatInstruction = isVisuals
-      ? `\n\nFORMAT (required): this is always OPEN-ENDED. Set "options" to null.`
+      ? `\n\nFORMAT (required): write 3-4 short, vivid, genuinely distinct image/scene options — each capturing a different way someone might picture this prompt. You MUST provide "options" as an array — do not return null.`
       : forceFormat === "open"
       ? `\n\nFORMAT (required): write this as a fully OPEN-ENDED question. You MUST set "options" to null — do not invent multiple-choice options this time.`
       : `\n\nFORMAT (required): write this as a MULTIPLE-CHOICE question with exactly 2-4 short, distinct options. You MUST provide "options" as an array — do not return null.`;
@@ -169,4 +169,3 @@ or, only if instructed to write an open answer:
     );
   }
 }
-
