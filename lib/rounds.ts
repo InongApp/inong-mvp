@@ -295,11 +295,36 @@ export async function completeRoundIfFull(
 ): Promise<boolean> {
   const progress = await getRoundProgress(roundId);
   if (progress.completed >= roundSize) {
+    const { data: round } = await supabase
+      .from("experience_rounds")
+      .select("room_id")
+      .eq("id", roundId)
+      .single();
+
     await supabase
       .from("experience_rounds")
       .update({ status: "complete", completed_at: new Date().toISOString() })
       .eq("id", roundId)
       .eq("status", "active");
+
+    // A completed round — Know Me, Bet on Me, Visuals, any type — counts
+    // as "a game played together." This is what gates the Compete
+    // section on the room hub (Showdown Phase 1, Step 2).
+    if (round?.room_id) {
+      const { data: room } = await supabase
+        .from("rooms")
+        .select("games_played_together")
+        .eq("id", round.room_id)
+        .single();
+      if (room) {
+        await supabase
+          .from("rooms")
+          .update({
+            games_played_together: (room.games_played_together ?? 0) + 1,
+          })
+          .eq("id", round.room_id);
+      }
+    }
 
     fetch("/api/analyze-round-signal", {
       method: "POST",
@@ -311,4 +336,3 @@ export async function completeRoundIfFull(
   }
   return false;
 }
-
