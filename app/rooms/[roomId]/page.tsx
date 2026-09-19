@@ -489,12 +489,12 @@ export default function RoomPage() {
             </button>
           ))}
 
-          {/* Compete — placeholder for Phase 2. The games-played gate is
-              real and already tracked in the data model; the Showdown
-              mechanic itself isn't built yet. */}
+          {/* Compete — unlocked once the games-played gate is met. Scheduling
+              (Showdown Phase 2, Step 1) is now live; actual gameplay
+              (shared questions, live timer) is still to come. */}
           <button
             disabled={!canCompete}
-            onClick={() => {}}
+            onClick={() => canCompete && router.push(`/rooms/${room.id}/compete`)}
             className={`w-full rounded-card border px-5 py-3 text-left transition ${
               canCompete
                 ? "border-mute text-paper hover:border-paper"
@@ -503,9 +503,11 @@ export default function RoomPage() {
           >
             <div className="flex items-center justify-between">
               <p className="font-medium">🏆 Compete</p>
-              <span className="shrink-0 rounded-full border border-mute px-2 py-0.5 text-[10px] uppercase tracking-wide text-mute">
-                {canCompete ? "Coming soon" : `${gamesPlayed}/${GAMES_NEEDED_TO_COMPETE} games`}
-              </span>
+              {!canCompete && (
+                <span className="shrink-0 rounded-full border border-mute px-2 py-0.5 text-[10px] uppercase tracking-wide text-mute">
+                  {gamesPlayed}/{GAMES_NEEDED_TO_COMPETE} games
+                </span>
+              )}
             </div>
             <p className="mt-0.5 text-xs text-mute">
               Challenge another Pair once you&rsquo;ve played {GAMES_NEEDED_TO_COMPETE} games together.
