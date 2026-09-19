@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { ROMANTIC_STAGES, RomanticStage } from "@/lib/relationshipMode";
+import { deriveLeagueKey, leagueLabel } from "@/lib/leagues";
 
 type RoomType = "one_on_one" | "inner_circle" | "family";
 type RelationshipMode = "romantic" | "soulmate" | "friendship";
@@ -69,6 +70,8 @@ export default function NewRoomPage() {
   const [type, setType] = useState<RoomType | null>(null);
   const [relationshipMode, setRelationshipMode] = useState<RelationshipMode | null>(null);
   const [romanticStage, setRomanticStage] = useState<Exclude<RomanticStage, null> | null>(null);
+  const [pairUsername, setPairUsername] = useState("");
+  const [country, setCountry] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +98,9 @@ export default function NewRoomPage() {
     if (type === "one_on_one" && !relationshipMode) {
       return setError("Pick what kind of relationship this is first.");
     }
+    if (type === "one_on_one" && (!pairUsername.trim() || !country.trim())) {
+      return setError("Give your Pair a username and your country first.");
+    }
     if (type !== "one_on_one" && !name.trim()) {
       return setError("Give this group a name.");
     }
@@ -102,6 +108,11 @@ export default function NewRoomPage() {
     setError(null);
     try {
       const meta = ROOM_TYPES.find((r) => r.type === type)!;
+      const leagueKey =
+        type === "one_on_one"
+          ? deriveLeagueKey(relationshipMode!, romanticStage)
+          : null;
+
       const { data: room, error: roomErr } = await supabase
         .from("rooms")
         .insert({
@@ -112,12 +123,27 @@ export default function NewRoomPage() {
             type === "one_on_one" && relationshipMode === "romantic"
               ? romanticStage
               : null,
+          pair_username: type === "one_on_one" ? pairUsername.trim() : null,
+          league_key: leagueKey,
+          pair_status: "confirmed", // the room creator always confirms their own League directly
+          national_board_country: type === "one_on_one" ? country.trim() : null,
+          games_played_together: 0,
           max_members: meta.maxMembers,
           created_by: userId,
         })
         .select()
         .single();
       if (roomErr) throw roomErr;
+
+      // Country lives on the profile too, so it follows the person across
+      // every room they're ever in, not just this one.
+      if (type === "one_on_one" && country.trim()) {
+        await supabase
+          .from("profiles")
+          .update({ country: country.trim() })
+          .eq("id", userId)
+          .is("country", null); // never silently overwrite a country they already set elsewhere
+      }
 
       const { error: memberErr } = await supabase
         .from("room_members")
@@ -269,7 +295,7 @@ export default function NewRoomPage() {
         {type === "one_on_one" && readyToConfirm && (
           <>
             <h1 className="font-serif text-2xl font-semibold">
-              Start a One-on-One
+              Set up your Pair
             </h1>
             <p className="mt-2 text-sm text-coral">
               {RELATIONSHIP_MODES.find((r) => r.mode === relationshipMode)?.icon}{" "}
@@ -278,13 +304,41 @@ export default function NewRoomPage() {
                 <> · {ROMANTIC_STAGES.find((s) => s.key === romanticStage)?.label}</>
               )}
             </p>
-            <p className="mt-4 text-mute">
+            <p className="mt-1 text-xs text-mute">
+              League: {leagueLabel(deriveLeagueKey(relationshipMode!, romanticStage))}
+            </p>
+
+            <label className="mt-6 text-xs uppercase tracking-wide text-mute">
+              Pair username
+            </label>
+            <input
+              value={pairUsername}
+              onChange={(e) => setPairUsername(e.target.value)}
+              placeholder="e.g. DegoAndMego"
+              className="mt-1 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
+            />
+
+            <label className="mt-4 text-xs uppercase tracking-wide text-mute">
+              Your country
+            </label>
+            <input
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              placeholder="e.g. South Africa"
+              className="mt-1 rounded-card bg-surface px-4 py-3 text-paper placeholder:text-mute focus:outline-none focus:ring-2 focus:ring-coral"
+            />
+            <p className="mt-1 text-xs text-mute">
+              Sets which National leaderboard you compete on — either of you
+              can change this later.
+            </p>
+
+            <p className="mt-6 text-mute">
               You&rsquo;ll get an invite link to send your Inong right after.
             </p>
             <button
               onClick={handleCreate}
               disabled={loading}
-              className="mt-8 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
+              className="mt-6 w-full rounded-full bg-coral py-4 font-medium text-ink transition hover:opacity-90 disabled:opacity-50"
             >
               {loading ? "Creating..." : "Create room"}
             </button>
@@ -296,3 +350,4 @@ export default function NewRoomPage() {
     </div>
   );
 }
+

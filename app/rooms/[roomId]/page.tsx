@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { checkRoomAgeMilestone, markMilestoneSeen } from "@/lib/milestones";
 import { useUnreadHrefs } from "./layout";
 import { ROMANTIC_STAGES, RomanticStage } from "@/lib/relationshipMode";
+import { deriveLeagueKey, leagueLabel } from "@/lib/leagues";
 
 type Member = { profile_id: string; display_name: string };
 type Room = {
@@ -14,9 +15,14 @@ type Room = {
   type: "one_on_one" | "inner_circle" | "family";
   relationship_mode: "romantic" | "soulmate" | "friendship" | null;
   romantic_stage: RomanticStage;
+  pair_username: string | null;
+  national_board_country: string | null;
+  games_played_together: number | null;
   max_members: number | null;
   created_at: string;
 };
+
+const GAMES_NEEDED_TO_COMPETE = 2;
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 function randomCode() {
@@ -43,6 +49,10 @@ export default function RoomPage() {
   const [milestone, setMilestone] = useState<string | null>(null);
   const [editingStage, setEditingStage] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
+  const [editingPair, setEditingPair] = useState(false);
+  const [pairUsernameInput, setPairUsernameInput] = useState("");
+  const [countryInput, setCountryInput] = useState("");
+  const [savingPair, setSavingPair] = useState(false);
 
   useEffect(() => {
     load();
@@ -61,7 +71,9 @@ export default function RoomPage() {
 
     const { data: roomData, error: roomErr } = await supabase
       .from("rooms")
-      .select("id, name, type, relationship_mode, romantic_stage, max_members, created_at")
+      .select(
+        "id, name, type, relationship_mode, romantic_stage, pair_username, national_board_country, games_played_together, max_members, created_at"
+      )
       .eq("id", params.roomId)
       .single();
 
@@ -71,6 +83,8 @@ export default function RoomPage() {
       return;
     }
     setRoom(roomData as Room);
+    setPairUsernameInput(roomData.pair_username ?? "");
+    setCountryInput(roomData.national_board_country ?? "");
 
     if (roomData.type === "one_on_one") {
       const found = await checkRoomAgeMilestone(roomData.id, roomData.created_at);
@@ -107,6 +121,30 @@ export default function RoomPage() {
       }
     } finally {
       setSavingStage(false);
+    }
+  }
+
+  async function savePairProfile() {
+    if (!room || !pairUsernameInput.trim() || !countryInput.trim()) return;
+    setSavingPair(true);
+    try {
+      const { error: updateErr } = await supabase
+        .from("rooms")
+        .update({
+          pair_username: pairUsernameInput.trim(),
+          national_board_country: countryInput.trim(),
+        })
+        .eq("id", room.id);
+      if (!updateErr) {
+        setRoom({
+          ...room,
+          pair_username: pairUsernameInput.trim(),
+          national_board_country: countryInput.trim(),
+        });
+        setEditingPair(false);
+      }
+    } finally {
+      setSavingPair(false);
     }
   }
 
@@ -207,6 +245,12 @@ export default function RoomPage() {
       ? "Inner Circle"
       : "Family";
   const currentStageLabel = ROMANTIC_STAGES.find((s) => s.key === room.romantic_stage)?.label;
+  const currentLeagueKey =
+    room.type === "one_on_one"
+      ? deriveLeagueKey(room.relationship_mode, room.romantic_stage)
+      : null;
+  const gamesPlayed = room.games_played_together ?? 0;
+  const canCompete = gamesPlayed >= GAMES_NEEDED_TO_COMPETE;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -236,14 +280,30 @@ export default function RoomPage() {
             )}
           </p>
           <h1 className="font-serif text-2xl font-semibold">{roomTitle}</h1>
-          {room.relationship_mode === "romantic" && (
-            <button
-              onClick={() => setEditingStage((s) => !s)}
-              className="mt-1 text-xs text-coral hover:underline"
-            >
-              {currentStageLabel ? "Change stage" : "Set your stage"}
-            </button>
+          {room.type === "one_on_one" && room.pair_username && (
+            <p className="mt-0.5 text-sm text-coral">
+              🏅 {room.pair_username} · {leagueLabel(currentLeagueKey)} League
+              {room.national_board_country && <> · {room.national_board_country}</>}
+            </p>
           )}
+          <div className="mt-1 flex gap-3">
+            {room.relationship_mode === "romantic" && (
+              <button
+                onClick={() => setEditingStage((s) => !s)}
+                className="text-xs text-coral hover:underline"
+              >
+                {currentStageLabel ? "Change stage" : "Set your stage"}
+              </button>
+            )}
+            {room.type === "one_on_one" && (
+              <button
+                onClick={() => setEditingPair((s) => !s)}
+                className="text-xs text-coral hover:underline"
+              >
+                Edit Pair profile
+              </button>
+            )}
+          </div>
         </div>
         <button
           onClick={() => router.push(`/rooms/${room.id}/history`)}
@@ -274,6 +334,34 @@ export default function RoomPage() {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {editingPair && room.type === "one_on_one" && (
+        <div className="mt-3 rounded-card bg-surface px-4 py-3">
+          <label className="text-xs uppercase tracking-wide text-mute">
+            Pair username
+          </label>
+          <input
+            value={pairUsernameInput}
+            onChange={(e) => setPairUsernameInput(e.target.value)}
+            className="mt-1 w-full rounded-card bg-ink px-3 py-2 text-sm text-paper focus:outline-none focus:ring-2 focus:ring-coral"
+          />
+          <label className="mt-3 block text-xs uppercase tracking-wide text-mute">
+            Country (National leaderboard)
+          </label>
+          <input
+            value={countryInput}
+            onChange={(e) => setCountryInput(e.target.value)}
+            className="mt-1 w-full rounded-card bg-ink px-3 py-2 text-sm text-paper focus:outline-none focus:ring-2 focus:ring-coral"
+          />
+          <button
+            onClick={savePairProfile}
+            disabled={savingPair || !pairUsernameInput.trim() || !countryInput.trim()}
+            className="mt-3 rounded-full bg-coral px-5 py-2 text-sm font-medium text-ink disabled:opacity-50"
+          >
+            {savingPair ? "Saving..." : "Save"}
+          </button>
         </div>
       )}
 
@@ -400,6 +488,29 @@ export default function RoomPage() {
               </p>
             </button>
           ))}
+
+          {/* Compete — placeholder for Phase 2. The games-played gate is
+              real and already tracked in the data model; the Showdown
+              mechanic itself isn't built yet. */}
+          <button
+            disabled={!canCompete}
+            onClick={() => {}}
+            className={`w-full rounded-card border px-5 py-3 text-left transition ${
+              canCompete
+                ? "border-mute text-paper hover:border-paper"
+                : "cursor-not-allowed border-mute/40 opacity-50"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <p className="font-medium">🏆 Compete</p>
+              <span className="shrink-0 rounded-full border border-mute px-2 py-0.5 text-[10px] uppercase tracking-wide text-mute">
+                {canCompete ? "Coming soon" : `${gamesPlayed}/${GAMES_NEEDED_TO_COMPETE} games`}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-mute">
+              Challenge another Pair once you&rsquo;ve played {GAMES_NEEDED_TO_COMPETE} games together.
+            </p>
+          </button>
         </div>
       )}
 
