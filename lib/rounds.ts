@@ -295,35 +295,60 @@ export async function completeRoundIfFull(
 ): Promise<boolean> {
   const progress = await getRoundProgress(roundId);
   if (progress.completed >= roundSize) {
-    const { data: round } = await supabase
+    const { data: round, error: roundErr } = await supabase
       .from("experience_rounds")
       .select("room_id")
       .eq("id", roundId)
       .single();
+    if (roundErr) {
+      console.error("completeRoundIfFull: could not fetch room_id for round", roundId, roundErr);
+    }
 
-    await supabase
+    const { error: statusErr } = await supabase
       .from("experience_rounds")
       .update({ status: "complete", completed_at: new Date().toISOString() })
       .eq("id", roundId)
       .eq("status", "active");
+    if (statusErr) {
+      console.error("completeRoundIfFull: failed to mark round complete", roundId, statusErr);
+    }
 
     // A completed round — Know Me, Bet on Me, Visuals, any type — counts
     // as "a game played together." This is what gates the Compete
     // section on the room hub (Showdown Phase 1, Step 2).
     if (round?.room_id) {
-      const { data: room } = await supabase
+      const { data: room, error: roomFetchErr } = await supabase
         .from("rooms")
         .select("games_played_together")
         .eq("id", round.room_id)
         .single();
+      if (roomFetchErr) {
+        console.error(
+          "completeRoundIfFull: could not fetch games_played_together for room",
+          round.room_id,
+          roomFetchErr
+        );
+      }
       if (room) {
-        await supabase
+        const { error: incrementErr } = await supabase
           .from("rooms")
           .update({
             games_played_together: (room.games_played_together ?? 0) + 1,
           })
           .eq("id", round.room_id);
+        if (incrementErr) {
+          console.error(
+            "completeRoundIfFull: failed to increment games_played_together for room",
+            round.room_id,
+            incrementErr
+          );
+        }
       }
+    } else {
+      console.error(
+        "completeRoundIfFull: round had no room_id — games_played_together was NOT incremented",
+        roundId
+      );
     }
 
     fetch("/api/analyze-round-signal", {
